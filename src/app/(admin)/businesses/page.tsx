@@ -11,6 +11,7 @@ type Business = {
   gstin?: string;
   createdAt: string;
   owner: { name: string; email: string };
+  franchise?: { id: string; name: string } | null;
   _count: { invoices: number; parties: number; items: number };
 };
 
@@ -49,7 +50,8 @@ export default function BusinessesPage() {
           <table className="w-full">
             <thead className="bg-gray-50">
               <tr>
-                <th className="table-th">Business</th>
+                <th className="table-th">Shop</th>
+                <th className="table-th">Franchise</th>
                 <th className="table-th">Owner</th>
                 <th className="table-th">GSTIN</th>
                 <th className="table-th text-right">Invoices</th>
@@ -63,6 +65,13 @@ export default function BusinessesPage() {
               {businesses.map((b) => (
                 <tr key={b.id}>
                   <td className="table-td font-medium">{b.name}</td>
+                  <td className="table-td">
+                    {b.franchise ? (
+                      b.franchise.name
+                    ) : (
+                      <span className="text-xs text-gray-400">Standalone</span>
+                    )}
+                  </td>
                   <td className="table-td">
                     <div>{b.owner?.name}</div>
                     <div className="text-xs text-gray-400">{b.owner?.email}</div>
@@ -84,7 +93,7 @@ export default function BusinessesPage() {
               ))}
               {businesses.length === 0 && (
                 <tr>
-                  <td className="table-td text-gray-400" colSpan={8}>
+                  <td className="table-td text-gray-400" colSpan={9}>
                     No businesses found.
                   </td>
                 </tr>

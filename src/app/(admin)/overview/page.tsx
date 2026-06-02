@@ -8,6 +8,7 @@ import PageHeader from "@/components/PageHeader";
 type Stats = {
   users: number;
   businesses: number;
+  franchises: number;
   invoices: number;
   parties: number;
   totalSalesVolume: number;
@@ -21,7 +22,8 @@ export default function OverviewPage() {
   }, []);
 
   const cards = [
-    { label: "Businesses", value: stats?.businesses },
+    { label: "Franchises", value: stats?.franchises },
+    { label: "Shops / Businesses", value: stats?.businesses },
     { label: "Users", value: stats?.users },
     { label: "Invoices", value: stats?.invoices },
     { label: "Parties", value: stats?.parties },
