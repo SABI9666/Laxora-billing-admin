@@ -25,7 +25,41 @@ type Pnl = {
     salesCount: number;
     purchaseCount: number;
   };
+  monthly: { month: string; salesNet: number; cogs: number; profit: number }[];
+  bills: { number: string; date: string; revenue: number; cogs: number; profit: number }[];
 };
+
+// Lightweight vertical bar chart for monthly profit/loss (green = profit, red = loss).
+function ProfitChart({ data }: { data: Pnl["monthly"] }) {
+  if (!data || data.length === 0)
+    return <p className="p-5 text-sm text-gray-400">No data for this period.</p>;
+  const maxAbs = Math.max(1, ...data.map((d) => Math.abs(d.profit)));
+  return (
+    <div className="flex items-end gap-3 overflow-x-auto px-5 py-4" style={{ height: 240 }}>
+      {data.map((d) => {
+        const h = Math.round((Math.abs(d.profit) / maxAbs) * 150);
+        const up = d.profit >= 0;
+        return (
+          <div key={d.month} className="flex min-w-[48px] flex-1 flex-col items-center">
+            <div className="flex h-[180px] w-full flex-col items-center justify-end">
+              <span
+                className={`mb-1 text-xs font-medium ${up ? "text-green-700" : "text-red-600"}`}
+              >
+                {formatMoney(d.profit)}
+              </span>
+              <div
+                className={`w-7 rounded-t ${up ? "bg-green-500" : "bg-red-500"}`}
+                style={{ height: Math.max(4, h) }}
+                title={`${d.month}: ${formatMoney(d.profit)}`}
+              />
+            </div>
+            <span className="mt-2 text-xs text-gray-500">{d.month}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 type PartyRow = { id: string; name: string; phone?: string | null; billed: number; paid: number; balance: number };
 type Ledger = {
   party: { name: string; type: string; openingBalance: number };
@@ -209,26 +243,107 @@ export default function ReportsPage() {
 
       {/* PROFIT & LOSS */}
       {tab === "pnl" && pnl && (
-        <div className="card max-w-xl">
-          <table className="w-full text-sm">
-            <tbody>
-              <Row label="Sales (gross)" value={formatMoney(pnl.pnl.salesGross)} />
-              <Row label="Sales (net of tax)" value={formatMoney(pnl.pnl.salesNet)} />
-              <Row label="Cost of goods sold" value={`- ${formatMoney(pnl.pnl.cogs)}`} />
-              <Row label="Gross Profit" value={formatMoney(pnl.pnl.grossProfit)} bold />
-              <Row label="Gross Margin" value={`${pnl.pnl.grossMarginPct}%`} />
-              <tr>
-                <td colSpan={2} className="py-2">
-                  <hr />
-                </td>
-              </tr>
-              <Row label="Tax collected (output)" value={formatMoney(pnl.pnl.taxCollected)} />
-              <Row label="Total purchases" value={formatMoney(pnl.pnl.purchases)} />
-              <Row label="Tax paid (input)" value={formatMoney(pnl.pnl.taxPaid)} />
-              <Row label="Sales bills / Purchase bills" value={`${pnl.pnl.salesCount} / ${pnl.pnl.purchaseCount}`} />
-            </tbody>
-          </table>
-        </div>
+        <>
+          {/* Headline profit KPIs */}
+          <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
+            <div className="card">
+              <p className="text-sm text-gray-500">Sales (net)</p>
+              <p className="mt-1 text-2xl font-bold">{formatMoney(pnl.pnl.salesNet)}</p>
+            </div>
+            <div className="card">
+              <p className="text-sm text-gray-500">Cost of goods</p>
+              <p className="mt-1 text-2xl font-bold">{formatMoney(pnl.pnl.cogs)}</p>
+            </div>
+            <div className="card">
+              <p className="text-sm text-gray-500">Gross Profit</p>
+              <p
+                className={`mt-1 text-2xl font-bold ${
+                  pnl.pnl.grossProfit >= 0 ? "text-green-700" : "text-red-600"
+                }`}
+              >
+                {formatMoney(pnl.pnl.grossProfit)}
+              </p>
+            </div>
+            <div className="card">
+              <p className="text-sm text-gray-500">Margin</p>
+              <p className="mt-1 text-2xl font-bold">{pnl.pnl.grossMarginPct}%</p>
+            </div>
+          </div>
+
+          {/* Monthly profit / loss chart */}
+          <div className="card mb-6 p-0">
+            <div className="border-b px-5 py-3 font-semibold">Monthly Profit / Loss</div>
+            <ProfitChart data={pnl.monthly} />
+          </div>
+
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+            {/* Per-bill profit / loss */}
+            <div className="card p-0">
+              <div className="border-b px-5 py-3 font-semibold">Profit / Loss per Bill</div>
+              <div className="max-h-96 overflow-y-auto">
+                <table className="w-full">
+                  <thead className="sticky top-0 bg-gray-50">
+                    <tr>
+                      <th className="table-th">Bill</th>
+                      <th className="table-th text-right">Revenue</th>
+                      <th className="table-th text-right">Cost</th>
+                      <th className="table-th text-right">Profit</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {pnl.bills.map((b) => (
+                      <tr key={b.number}>
+                        <td className="table-td font-medium">{b.number}</td>
+                        <td className="table-td text-right">{formatMoney(b.revenue)}</td>
+                        <td className="table-td text-right">{formatMoney(b.cogs)}</td>
+                        <td
+                          className={`table-td text-right font-semibold ${
+                            b.profit >= 0 ? "text-green-700" : "text-red-600"
+                          }`}
+                        >
+                          {formatMoney(b.profit)}
+                        </td>
+                      </tr>
+                    ))}
+                    {pnl.bills.length === 0 && (
+                      <tr>
+                        <td className="table-td text-gray-400" colSpan={4}>
+                          No sales bills in this period.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* P&L statement */}
+            <div className="card">
+              <div className="mb-3 font-semibold">P&amp;L Statement</div>
+              <table className="w-full text-sm">
+                <tbody>
+                  <Row label="Sales (gross)" value={formatMoney(pnl.pnl.salesGross)} />
+                  <Row label="Sales (net of tax)" value={formatMoney(pnl.pnl.salesNet)} />
+                  <Row label="Cost of goods sold" value={`- ${formatMoney(pnl.pnl.cogs)}`} />
+                  <Row label="Gross Profit" value={formatMoney(pnl.pnl.grossProfit)} bold />
+                  <Row label="Gross Margin" value={`${pnl.pnl.grossMarginPct}%`} />
+                  <tr>
+                    <td colSpan={2} className="py-2">
+                      <hr />
+                    </td>
+                  </tr>
+                  <Row label="Tax collected (output)" value={formatMoney(pnl.pnl.taxCollected)} />
+                  <Row label="Total purchases" value={formatMoney(pnl.pnl.purchases)} />
+                  <Row label="Tax paid (input)" value={formatMoney(pnl.pnl.taxPaid)} />
+                  <Row
+                    label="Sales bills / Purchase bills"
+                    value={`${pnl.pnl.salesCount} / ${pnl.pnl.purchaseCount}`}
+                  />
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
       )}
 
       {/* CUSTOMER / SUPPLIER LEDGER */}
