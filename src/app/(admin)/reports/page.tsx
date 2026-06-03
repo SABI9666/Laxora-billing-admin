@@ -15,6 +15,8 @@ type SalesReport = {
 type Pnl = {
   pnl: {
     salesGross: number;
+    amountCollected: number;
+    outstanding: number;
     salesNet: number;
     cogs: number;
     grossProfit: number;
@@ -247,7 +249,7 @@ export default function ReportsPage() {
           {/* Headline profit KPIs */}
           <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
             <div className="card">
-              <p className="text-sm text-gray-500">Sales (net)</p>
+              <p className="text-sm text-gray-500">Collected (net of tax)</p>
               <p className="mt-1 text-2xl font-bold">{formatMoney(pnl.pnl.salesNet)}</p>
             </div>
             <div className="card">
@@ -320,11 +322,15 @@ export default function ReportsPage() {
             {/* P&L statement */}
             <div className="card">
               <div className="mb-3 font-semibold">P&amp;L Statement</div>
+              <p className="mb-2 text-xs text-gray-400">
+                Cash basis — based on amounts actually collected.
+              </p>
               <table className="w-full text-sm">
                 <tbody>
-                  <Row label="Sales (gross)" value={formatMoney(pnl.pnl.salesGross)} />
-                  <Row label="Sales (net of tax)" value={formatMoney(pnl.pnl.salesNet)} />
-                  <Row label="Cost of goods sold" value={`- ${formatMoney(pnl.pnl.cogs)}`} />
+                  <Row label="Amount collected" value={formatMoney(pnl.pnl.amountCollected)} />
+                  <Row label="Less: tax collected" value={`- ${formatMoney(pnl.pnl.taxCollected)}`} />
+                  <Row label="Net sales (ex-tax)" value={formatMoney(pnl.pnl.salesNet)} />
+                  <Row label="Less: cost of goods sold" value={`- ${formatMoney(pnl.pnl.cogs)}`} />
                   <Row label="Gross Profit" value={formatMoney(pnl.pnl.grossProfit)} bold />
                   <Row label="Gross Margin" value={`${pnl.pnl.grossMarginPct}%`} />
                   <tr>
@@ -332,9 +338,9 @@ export default function ReportsPage() {
                       <hr />
                     </td>
                   </tr>
-                  <Row label="Tax collected (output)" value={formatMoney(pnl.pnl.taxCollected)} />
+                  <Row label="Total billed" value={formatMoney(pnl.pnl.salesGross)} />
+                  <Row label="Outstanding (to collect)" value={formatMoney(pnl.pnl.outstanding)} />
                   <Row label="Total purchases" value={formatMoney(pnl.pnl.purchases)} />
-                  <Row label="Tax paid (input)" value={formatMoney(pnl.pnl.taxPaid)} />
                   <Row
                     label="Sales bills / Purchase bills"
                     value={`${pnl.pnl.salesCount} / ${pnl.pnl.purchaseCount}`}
