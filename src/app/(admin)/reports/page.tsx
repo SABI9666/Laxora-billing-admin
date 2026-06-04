@@ -32,6 +32,7 @@ type Pnl = {
   };
   monthly: { month: string; salesNet: number; cogs: number; expenses: number; profit: number }[];
   bills: {
+    id: string;
     number: string;
     date: string;
     revenue: number;
@@ -39,6 +40,31 @@ type Pnl = {
     expense: number;
     profit: number;
   }[];
+};
+
+type BillPnl = {
+  bill: {
+    invoiceNumber: string;
+    date: string;
+    party: string;
+    shop: string;
+    status: string;
+  };
+  statement: {
+    subtotal: number;
+    discount: number;
+    netSale: number;
+    gst: number;
+    totalBilled: number;
+    amountCollected: number;
+    outstanding: number;
+    cogs: number;
+    grossProfit: number;
+    charges: { category: string; amount: number }[];
+    chargesTotal: number;
+    netProfit: number;
+    netMarginPct: number;
+  };
 };
 
 // Lightweight vertical bar chart for monthly profit/loss (green = profit, red = loss).
@@ -95,6 +121,7 @@ export default function ReportsPage() {
 
   const [sales, setSales] = useState<SalesReport | null>(null);
   const [pnl, setPnl] = useState<Pnl | null>(null);
+  const [billPnl, setBillPnl] = useState<BillPnl | null>(null);
   const [parties, setParties] = useState<PartyRow[]>([]);
   const [ledger, setLedger] = useState<Ledger | null>(null);
 
@@ -136,6 +163,10 @@ export default function ReportsPage() {
 
   async function openLedger(partyId: string) {
     setLedger(await api(`/api/admin/parties/${partyId}/ledger`));
+  }
+
+  async function openBillPnl(invoiceId: string) {
+    setBillPnl(await api(`/api/admin/invoices/${invoiceId}/pnl`));
   }
 
   const showDates = tab === "sales" || tab === "pnl";
@@ -295,7 +326,10 @@ export default function ReportsPage() {
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
             {/* Per-bill profit / loss */}
             <div className="card p-0">
-              <div className="border-b px-5 py-3 font-semibold">Profit / Loss per Bill</div>
+              <div className="border-b px-5 py-3 font-semibold">
+                Profit / Loss per Bill{" "}
+                <span className="font-normal text-gray-400">(click a bill for full P&amp;L)</span>
+              </div>
               <div className="max-h-96 overflow-y-auto">
                 <table className="w-full">
                   <thead className="sticky top-0 bg-gray-50">
@@ -309,8 +343,12 @@ export default function ReportsPage() {
                   </thead>
                   <tbody className="divide-y divide-gray-100">
                     {pnl.bills.map((b) => (
-                      <tr key={b.number}>
-                        <td className="table-td font-medium">{b.number}</td>
+                      <tr
+                        key={b.number}
+                        className="cursor-pointer hover:bg-gray-50"
+                        onClick={() => openBillPnl(b.id)}
+                      >
+                        <td className="table-td font-medium text-brand">{b.number}</td>
                         <td className="table-td text-right">{formatMoney(b.revenue)}</td>
                         <td className="table-td text-right">{formatMoney(b.cogs)}</td>
                         <td className="table-td text-right">{formatMoney(b.expense)}</td>
@@ -449,6 +487,87 @@ export default function ReportsPage() {
                 </div>
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Per-bill P&L statement modal */}
+      {billPnl && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          onClick={() => setBillPnl(null)}
+        >
+          <div
+            className="w-full max-w-md rounded-xl bg-white shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b px-5 py-4">
+              <div>
+                <h2 className="text-lg font-semibold">
+                  P&amp;L — {billPnl.bill.invoiceNumber}
+                </h2>
+                <p className="text-xs text-gray-500">
+                  {billPnl.bill.party} · {billPnl.bill.shop} · {billPnl.bill.status}
+                </p>
+              </div>
+              <button
+                onClick={() => setBillPnl(null)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="max-h-[70vh] overflow-y-auto p-5">
+              <table className="w-full text-sm">
+                <tbody>
+                  <Row label="Subtotal (ex-GST)" value={formatMoney(billPnl.statement.subtotal)} />
+                  <Row label="Less: discount" value={`- ${formatMoney(billPnl.statement.discount)}`} />
+                  <Row label="Net sale (ex-GST)" value={formatMoney(billPnl.statement.netSale)} bold />
+                  <Row label="Add: GST" value={`+ ${formatMoney(billPnl.statement.gst)}`} />
+                  <Row label="Total bill (incl GST)" value={formatMoney(billPnl.statement.totalBilled)} bold />
+                  <tr>
+                    <td colSpan={2} className="py-1">
+                      <hr />
+                    </td>
+                  </tr>
+                  <Row label="Amount collected" value={formatMoney(billPnl.statement.amountCollected)} />
+                  <Row label="Outstanding" value={formatMoney(billPnl.statement.outstanding)} />
+                  <tr>
+                    <td colSpan={2} className="py-1">
+                      <hr />
+                    </td>
+                  </tr>
+                  <Row label="Net sale (ex-GST)" value={formatMoney(billPnl.statement.netSale)} />
+                  <Row label="Less: cost of goods" value={`- ${formatMoney(billPnl.statement.cogs)}`} />
+                  <Row label="Gross Profit" value={formatMoney(billPnl.statement.grossProfit)} bold />
+                  {billPnl.statement.charges.map((c) => (
+                    <Row
+                      key={c.category}
+                      label={`Less: ${c.category}`}
+                      value={`- ${formatMoney(c.amount)}`}
+                    />
+                  ))}
+                  {billPnl.statement.charges.length === 0 && (
+                    <Row label="Less: charges" value={`- ${formatMoney(0)}`} />
+                  )}
+                  <tr className="border-t">
+                    <td className="py-2 text-base font-bold">Net Profit</td>
+                    <td
+                      className={`py-2 text-right text-base font-bold ${
+                        billPnl.statement.netProfit >= 0 ? "text-green-700" : "text-red-600"
+                      }`}
+                    >
+                      {formatMoney(billPnl.statement.netProfit)}
+                    </td>
+                  </tr>
+                  <Row label="Net Margin" value={`${billPnl.statement.netMarginPct}%`} />
+                </tbody>
+              </table>
+              <p className="mt-3 text-xs text-gray-400">
+                GST is collected for the government (not profit). Returns already reduce the
+                figures above. Charges = commission/damage/etc. linked to this bill.
+              </p>
+            </div>
           </div>
         </div>
       )}
