@@ -376,36 +376,63 @@ export default function ReportsPage() {
             </div>
 
             {/* P&L statement */}
-            <div className="card">
-              <div className="mb-3 font-semibold">P&amp;L Statement</div>
-              <p className="mb-2 text-xs text-gray-400">
-                Cash basis — based on amounts actually collected.
-              </p>
-              <table className="w-full text-sm">
-                <tbody>
-                  <Row label="Amount collected" value={formatMoney(pnl.pnl.amountCollected)} />
-                  <Row label="Less: tax collected" value={`- ${formatMoney(pnl.pnl.taxCollected)}`} />
-                  <Row label="Less: returns" value={`- ${formatMoney(pnl.pnl.returns)}`} />
-                  <Row label="Net sales (ex-tax)" value={formatMoney(pnl.pnl.salesNet)} />
-                  <Row label="Less: cost of goods sold" value={`- ${formatMoney(pnl.pnl.cogs)}`} />
-                  <Row label="Gross Profit" value={formatMoney(pnl.pnl.grossProfit)} bold />
-                  <Row label="Less: expenses / charges" value={`- ${formatMoney(pnl.pnl.expenses)}`} />
-                  <Row label="Net Profit" value={formatMoney(pnl.pnl.netProfit)} bold />
-                  <Row label="Net Margin" value={`${pnl.pnl.netMarginPct}%`} />
-                  <tr>
-                    <td colSpan={2} className="py-2">
-                      <hr />
-                    </td>
-                  </tr>
-                  <Row label="Total billed" value={formatMoney(pnl.pnl.salesGross)} />
-                  <Row label="Outstanding (to collect)" value={formatMoney(pnl.pnl.outstanding)} />
-                  <Row label="Total purchases" value={formatMoney(pnl.pnl.purchases)} />
-                  <Row
-                    label="Sales bills / Purchase bills"
-                    value={`${pnl.pnl.salesCount} / ${pnl.pnl.purchaseCount}`}
-                  />
-                </tbody>
-              </table>
+            <div className="card space-y-5">
+              <div>
+                <div className="font-semibold">P&amp;L Statement</div>
+                <p className="text-xs text-gray-400">
+                  Cash basis — based on what you actually collected.
+                </p>
+              </div>
+
+              <section>
+                <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-400">
+                  Income
+                </p>
+                <Line label="Amount collected" value={formatMoney(pnl.pnl.amountCollected)} />
+                <Line label="GST collected" value={`- ${formatMoney(pnl.pnl.taxCollected)}`} />
+                <Line label="Returns" value={`- ${formatMoney(pnl.pnl.returns)}`} />
+                <div className="mt-1 flex items-center justify-between border-t pt-2 text-sm font-semibold">
+                  <span>Net Sales</span>
+                  <span>{formatMoney(pnl.pnl.salesNet)}</span>
+                </div>
+              </section>
+
+              <section>
+                <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-400">
+                  Costs
+                </p>
+                <Line label="Cost of goods sold" value={`- ${formatMoney(pnl.pnl.cogs)}`} />
+                <Line
+                  label="Gross Profit"
+                  value={formatMoney(pnl.pnl.grossProfit)}
+                  bold
+                  valueClass={pnl.pnl.grossProfit >= 0 ? "text-green-700" : "text-red-600"}
+                />
+                <Line label="Expenses / charges" value={`- ${formatMoney(pnl.pnl.expenses)}`} />
+              </section>
+
+              <section>
+                <div className="flex items-center justify-between border-t pt-3 text-lg font-bold">
+                  <span>Net Profit</span>
+                  <span className={pnl.pnl.netProfit >= 0 ? "text-green-700" : "text-red-600"}>
+                    {formatMoney(pnl.pnl.netProfit)}
+                  </span>
+                </div>
+                <Line label="Net Margin" value={`${pnl.pnl.netMarginPct}%`} />
+              </section>
+
+              <section className="border-t pt-3">
+                <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-400">
+                  For reference
+                </p>
+                <Line label="Total billed" value={formatMoney(pnl.pnl.salesGross)} />
+                <Line label="Outstanding (to collect)" value={formatMoney(pnl.pnl.outstanding)} />
+                <Line label="Total purchases" value={formatMoney(pnl.pnl.purchases)} />
+                <Line
+                  label="Sales / Purchase bills"
+                  value={`${pnl.pnl.salesCount} / ${pnl.pnl.purchaseCount}`}
+                />
+              </section>
             </div>
           </div>
         </>
@@ -458,8 +485,8 @@ export default function ReportsPage() {
                     <tr>
                       <th className="table-th">Date</th>
                       <th className="table-th">Detail</th>
-                      <th className="table-th text-right">Debit</th>
-                      <th className="table-th text-right">Credit</th>
+                      <th className="table-th text-right">Billed</th>
+                      <th className="table-th text-right">Paid / Return</th>
                       <th className="table-th text-right">Balance</th>
                     </tr>
                   </thead>
@@ -478,16 +505,38 @@ export default function ReportsPage() {
                           {e.ref ? ` · ${e.ref}` : ""}
                         </td>
                         <td className="table-td text-right">{e.debit ? formatMoney(e.debit) : "—"}</td>
-                        <td className="table-td text-right">{e.credit ? formatMoney(e.credit) : "—"}</td>
+                        <td className="table-td text-right text-green-700">
+                          {e.credit ? formatMoney(e.credit) : "—"}
+                        </td>
                         <td className="table-td text-right font-medium">{formatMoney(e.balance)}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
-                <div className="flex justify-between border-t px-5 py-3 font-semibold">
-                  <span>Closing balance</span>
-                  <span>{formatMoney(ledger.closingBalance)}</span>
+                <div className="flex items-center justify-between border-t px-5 py-3">
+                  <span className="font-semibold">
+                    {ledger.closingBalance > 0
+                      ? "Balance due from customer"
+                      : ledger.closingBalance < 0
+                      ? "Advance / we owe customer"
+                      : "Settled"}
+                  </span>
+                  <span
+                    className={`font-bold ${
+                      ledger.closingBalance > 0
+                        ? "text-red-600"
+                        : ledger.closingBalance < 0
+                        ? "text-green-700"
+                        : ""
+                    }`}
+                  >
+                    {formatMoney(Math.abs(ledger.closingBalance))}
+                  </span>
                 </div>
+                <p className="px-5 pb-3 text-xs text-gray-400">
+                  "Billed" adds to what they owe; "Paid / Return" reduces it. A balance due means
+                  the customer still owes you.
+                </p>
               </>
             )}
           </div>
@@ -520,61 +569,99 @@ export default function ReportsPage() {
                 ✕
               </button>
             </div>
-            <div className="max-h-[70vh] overflow-y-auto p-5">
-              <table className="w-full text-sm">
-                <tbody>
-                  <Row label="Subtotal (ex-GST)" value={formatMoney(billPnl.statement.subtotal)} />
-                  <Row label="Less: discount" value={`- ${formatMoney(billPnl.statement.discount)}`} />
-                  <Row label="Net sale (ex-GST)" value={formatMoney(billPnl.statement.netSale)} bold />
-                  <Row label="Add: GST" value={`+ ${formatMoney(billPnl.statement.gst)}`} />
-                  <Row label="Total bill (incl GST)" value={formatMoney(billPnl.statement.totalBilled)} bold />
-                  <tr>
-                    <td colSpan={2} className="py-1">
-                      <hr />
-                    </td>
-                  </tr>
-                  <Row label="Amount collected" value={formatMoney(billPnl.statement.amountCollected)} />
-                  <Row label="Returns (credit note)" value={formatMoney(billPnl.statement.returns)} />
-                  <Row label="Outstanding" value={formatMoney(billPnl.statement.outstanding)} />
-                  <tr>
-                    <td colSpan={2} className="py-1">
-                      <hr />
-                    </td>
-                  </tr>
-                  <Row label="Net sale (ex-GST)" value={formatMoney(billPnl.statement.netSale)} />
-                  <Row label="Less: cost of goods" value={`- ${formatMoney(billPnl.statement.cogs)}`} />
-                  <Row label="Gross Profit" value={formatMoney(billPnl.statement.grossProfit)} bold />
-                  {billPnl.statement.charges.map((c) => (
-                    <Row
-                      key={c.category}
-                      label={`Less: ${c.category}`}
-                      value={`- ${formatMoney(c.amount)}`}
-                    />
-                  ))}
-                  {billPnl.statement.charges.length === 0 && (
-                    <Row label="Less: charges" value={`- ${formatMoney(0)}`} />
-                  )}
-                  <tr className="border-t">
-                    <td className="py-2 text-base font-bold">Net Profit</td>
-                    <td
-                      className={`py-2 text-right text-base font-bold ${
-                        billPnl.statement.netProfit >= 0 ? "text-green-700" : "text-red-600"
-                      }`}
-                    >
-                      {formatMoney(billPnl.statement.netProfit)}
-                    </td>
-                  </tr>
-                  <Row label="Net Margin" value={`${billPnl.statement.netMarginPct}%`} />
-                </tbody>
-              </table>
-              <p className="mt-3 text-xs text-gray-400">
-                GST is collected for the government (not profit). Returns already reduce the
-                figures above. Charges = commission/damage/etc. linked to this bill.
+            <div className="max-h-[70vh] space-y-5 overflow-y-auto p-5">
+              {/* 1. Bill amount */}
+              <section>
+                <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-400">
+                  Bill Amount
+                </p>
+                <Line label="Subtotal (ex-GST)" value={formatMoney(billPnl.statement.subtotal)} />
+                <Line label="Discount" value={`- ${formatMoney(billPnl.statement.discount)}`} />
+                <Line label="GST" value={`+ ${formatMoney(billPnl.statement.gst)}`} />
+                <div className="mt-1 flex items-center justify-between border-t pt-2 text-base font-bold">
+                  <span>Total Bill (incl GST)</span>
+                  <span>{formatMoney(billPnl.statement.totalBilled)}</span>
+                </div>
+              </section>
+
+              {/* 2. Payment */}
+              <section>
+                <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-400">
+                  Payment
+                </p>
+                <Line label="Collected" value={formatMoney(billPnl.statement.amountCollected)} />
+                <Line
+                  label="Returned (credit note)"
+                  value={formatMoney(billPnl.statement.returns)}
+                />
+                <Line
+                  label="Outstanding (to collect)"
+                  value={formatMoney(billPnl.statement.outstanding)}
+                  valueClass={billPnl.statement.outstanding > 0 ? "text-red-600 font-semibold" : ""}
+                />
+              </section>
+
+              {/* 3. Profit */}
+              <section>
+                <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-400">
+                  Profit on this Bill
+                </p>
+                <Line label="Net sale (ex-GST)" value={formatMoney(billPnl.statement.netSale)} />
+                <Line
+                  label="Cost of goods"
+                  value={`- ${formatMoney(billPnl.statement.cogs)}`}
+                />
+                <Line
+                  label="Gross Profit"
+                  value={formatMoney(billPnl.statement.grossProfit)}
+                  bold
+                />
+                {billPnl.statement.charges.map((c) => (
+                  <Line key={c.category} label={c.category} value={`- ${formatMoney(c.amount)}`} />
+                ))}
+                {billPnl.statement.charges.length === 0 && (
+                  <Line label="Charges" value={`- ${formatMoney(0)}`} />
+                )}
+                <div className="mt-1 flex items-center justify-between border-t pt-2 text-base font-bold">
+                  <span>Net Profit</span>
+                  <span
+                    className={
+                      billPnl.statement.netProfit >= 0 ? "text-green-700" : "text-red-600"
+                    }
+                  >
+                    {formatMoney(billPnl.statement.netProfit)}
+                  </span>
+                </div>
+                <Line label="Net Margin" value={`${billPnl.statement.netMarginPct}%`} />
+              </section>
+
+              <p className="text-xs text-gray-400">
+                GST is collected for the government (not profit). Returns and charges
+                (commission/damage) linked to this bill are already included above.
               </p>
             </div>
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function Line({
+  label,
+  value,
+  bold,
+  valueClass = "",
+}: {
+  label: string;
+  value: string;
+  bold?: boolean;
+  valueClass?: string;
+}) {
+  return (
+    <div className="flex items-center justify-between py-1 text-sm">
+      <span className={bold ? "font-semibold text-gray-800" : "text-gray-500"}>{label}</span>
+      <span className={`${bold ? "font-semibold" : ""} ${valueClass}`}>{value}</span>
     </div>
   );
 }
