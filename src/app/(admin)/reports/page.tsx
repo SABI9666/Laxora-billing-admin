@@ -21,14 +21,24 @@ type Pnl = {
     cogs: number;
     grossProfit: number;
     grossMarginPct: number;
+    expenses: number;
+    netProfit: number;
+    netMarginPct: number;
     taxCollected: number;
     purchases: number;
     taxPaid: number;
     salesCount: number;
     purchaseCount: number;
   };
-  monthly: { month: string; salesNet: number; cogs: number; profit: number }[];
-  bills: { number: string; date: string; revenue: number; cogs: number; profit: number }[];
+  monthly: { month: string; salesNet: number; cogs: number; expenses: number; profit: number }[];
+  bills: {
+    number: string;
+    date: string;
+    revenue: number;
+    cogs: number;
+    expense: number;
+    profit: number;
+  }[];
 };
 
 // Lightweight vertical bar chart for monthly profit/loss (green = profit, red = loss).
@@ -257,24 +267,28 @@ export default function ReportsPage() {
               <p className="mt-1 text-2xl font-bold">{formatMoney(pnl.pnl.cogs)}</p>
             </div>
             <div className="card">
-              <p className="text-sm text-gray-500">Gross Profit</p>
-              <p
-                className={`mt-1 text-2xl font-bold ${
-                  pnl.pnl.grossProfit >= 0 ? "text-green-700" : "text-red-600"
-                }`}
-              >
-                {formatMoney(pnl.pnl.grossProfit)}
+              <p className="text-sm text-gray-500">Expenses / charges</p>
+              <p className="mt-1 text-2xl font-bold text-red-600">
+                {formatMoney(pnl.pnl.expenses)}
               </p>
             </div>
             <div className="card">
-              <p className="text-sm text-gray-500">Margin</p>
-              <p className="mt-1 text-2xl font-bold">{pnl.pnl.grossMarginPct}%</p>
+              <p className="text-sm text-gray-500">Net Profit</p>
+              <p
+                className={`mt-1 text-2xl font-bold ${
+                  pnl.pnl.netProfit >= 0 ? "text-green-700" : "text-red-600"
+                }`}
+              >
+                {formatMoney(pnl.pnl.netProfit)}
+              </p>
             </div>
           </div>
 
           {/* Monthly profit / loss chart */}
           <div className="card mb-6 p-0">
-            <div className="border-b px-5 py-3 font-semibold">Monthly Profit / Loss</div>
+            <div className="border-b px-5 py-3 font-semibold">
+              Monthly Net Profit / Loss
+            </div>
             <ProfitChart data={pnl.monthly} />
           </div>
 
@@ -289,6 +303,7 @@ export default function ReportsPage() {
                       <th className="table-th">Bill</th>
                       <th className="table-th text-right">Revenue</th>
                       <th className="table-th text-right">Cost</th>
+                      <th className="table-th text-right">Charges</th>
                       <th className="table-th text-right">Profit</th>
                     </tr>
                   </thead>
@@ -298,6 +313,7 @@ export default function ReportsPage() {
                         <td className="table-td font-medium">{b.number}</td>
                         <td className="table-td text-right">{formatMoney(b.revenue)}</td>
                         <td className="table-td text-right">{formatMoney(b.cogs)}</td>
+                        <td className="table-td text-right">{formatMoney(b.expense)}</td>
                         <td
                           className={`table-td text-right font-semibold ${
                             b.profit >= 0 ? "text-green-700" : "text-red-600"
@@ -309,7 +325,7 @@ export default function ReportsPage() {
                     ))}
                     {pnl.bills.length === 0 && (
                       <tr>
-                        <td className="table-td text-gray-400" colSpan={4}>
+                        <td className="table-td text-gray-400" colSpan={5}>
                           No sales bills in this period.
                         </td>
                       </tr>
@@ -332,7 +348,9 @@ export default function ReportsPage() {
                   <Row label="Net sales (ex-tax)" value={formatMoney(pnl.pnl.salesNet)} />
                   <Row label="Less: cost of goods sold" value={`- ${formatMoney(pnl.pnl.cogs)}`} />
                   <Row label="Gross Profit" value={formatMoney(pnl.pnl.grossProfit)} bold />
-                  <Row label="Gross Margin" value={`${pnl.pnl.grossMarginPct}%`} />
+                  <Row label="Less: expenses / charges" value={`- ${formatMoney(pnl.pnl.expenses)}`} />
+                  <Row label="Net Profit" value={formatMoney(pnl.pnl.netProfit)} bold />
+                  <Row label="Net Margin" value={`${pnl.pnl.netMarginPct}%`} />
                   <tr>
                     <td colSpan={2} className="py-2">
                       <hr />
