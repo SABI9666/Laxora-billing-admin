@@ -17,6 +17,7 @@ type Pnl = {
     salesGross: number;
     amountCollected: number;
     outstanding: number;
+    returns: number;
     salesNet: number;
     cogs: number;
     grossProfit: number;
@@ -58,6 +59,7 @@ type BillPnl = {
     totalBilled: number;
     amountCollected: number;
     outstanding: number;
+    returns: number;
     cogs: number;
     grossProfit: number;
     charges: { category: string; amount: number }[];
@@ -383,6 +385,7 @@ export default function ReportsPage() {
                 <tbody>
                   <Row label="Amount collected" value={formatMoney(pnl.pnl.amountCollected)} />
                   <Row label="Less: tax collected" value={`- ${formatMoney(pnl.pnl.taxCollected)}`} />
+                  <Row label="Less: returns" value={`- ${formatMoney(pnl.pnl.returns)}`} />
                   <Row label="Net sales (ex-tax)" value={formatMoney(pnl.pnl.salesNet)} />
                   <Row label="Less: cost of goods sold" value={`- ${formatMoney(pnl.pnl.cogs)}`} />
                   <Row label="Gross Profit" value={formatMoney(pnl.pnl.grossProfit)} bold />
@@ -531,6 +534,7 @@ export default function ReportsPage() {
                     </td>
                   </tr>
                   <Row label="Amount collected" value={formatMoney(billPnl.statement.amountCollected)} />
+                  <Row label="Returns (credit note)" value={formatMoney(billPnl.statement.returns)} />
                   <Row label="Outstanding" value={formatMoney(billPnl.statement.outstanding)} />
                   <tr>
                     <td colSpan={2} className="py-1">
