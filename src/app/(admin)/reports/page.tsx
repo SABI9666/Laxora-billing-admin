@@ -6,7 +6,21 @@ import { formatMoney, formatDate } from "@/lib/format";
 import PageHeader from "@/components/PageHeader";
 
 type Shop = { id: string; name: string; code?: string | null };
-type Tab = "sales" | "pnl" | "customers" | "suppliers";
+type Tab = "sales" | "pnl" | "customers" | "suppliers" | "analysis";
+
+type SupplierAnalysis = {
+  best: { name: string; profit: number; marginPct: number } | null;
+  suppliers: {
+    id: string;
+    name: string;
+    purchaseIn: number;
+    salesOut: number;
+    cogs: number;
+    profit: number;
+    marginPct: number;
+    productCount: number;
+  }[];
+};
 
 type SalesReport = {
   months: { month: string; count: number; total: number; tax: number }[];
@@ -112,6 +126,7 @@ const TABS: { key: Tab; label: string }[] = [
   { key: "pnl", label: "Profit & Loss" },
   { key: "customers", label: "Customer Ledger" },
   { key: "suppliers", label: "Purchase Ledger" },
+  { key: "analysis", label: "Supplier Analysis" },
 ];
 
 export default function ReportsPage() {
@@ -126,6 +141,7 @@ export default function ReportsPage() {
   const [billPnl, setBillPnl] = useState<BillPnl | null>(null);
   const [parties, setParties] = useState<PartyRow[]>([]);
   const [ledger, setLedger] = useState<Ledger | null>(null);
+  const [analysis, setAnalysis] = useState<SupplierAnalysis | null>(null);
 
   const range = () => {
     const q = new URLSearchParams();
@@ -149,6 +165,8 @@ export default function ReportsPage() {
       setSales(await api(`/api/admin/businesses/${shopId}/sales-report${range()}`));
     } else if (tab === "pnl") {
       setPnl(await api(`/api/admin/businesses/${shopId}/pnl${range()}`));
+    } else if (tab === "analysis") {
+      setAnalysis(await api(`/api/admin/businesses/${shopId}/suppliers-analysis${range()}`));
     } else {
       const type = tab === "customers" ? "CUSTOMER" : "SUPPLIER";
       const r = await api<{ parties: PartyRow[] }>(
@@ -171,7 +189,7 @@ export default function ReportsPage() {
     setBillPnl(await api(`/api/admin/invoices/${invoiceId}/pnl`));
   }
 
-  const showDates = tab === "sales" || tab === "pnl";
+  const showDates = tab === "sales" || tab === "pnl" || tab === "analysis";
 
   return (
     <div>
@@ -541,6 +559,80 @@ export default function ReportsPage() {
             )}
           </div>
         </div>
+      )}
+
+      {/* SUPPLIER ANALYSIS */}
+      {tab === "analysis" && analysis && (
+        <>
+          {analysis.best && (
+            <div className="card mb-4 flex flex-wrap items-center justify-between gap-2">
+              <span className="text-sm text-gray-500">🏆 Best-performing supplier</span>
+              <span className="font-semibold">
+                {analysis.best.name} · profit {formatMoney(analysis.best.profit)} ·{" "}
+                {analysis.best.marginPct}% margin
+              </span>
+            </div>
+          )}
+          <div className="card p-0">
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="table-th">Supplier</th>
+                    <th className="table-th text-right">Purchased (In)</th>
+                    <th className="table-th text-right">Sold (Out)</th>
+                    <th className="table-th text-right">Cost</th>
+                    <th className="table-th text-right">Profit</th>
+                    <th className="table-th text-right">Margin</th>
+                    <th className="table-th text-right">Products</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {analysis.suppliers.map((s) => {
+                    // Slow supplier: bought a lot but sold little.
+                    const slow = s.purchaseIn > 0 && s.salesOut < s.purchaseIn * 0.5;
+                    return (
+                      <tr key={s.id}>
+                        <td className="table-td font-medium">
+                          {s.name}
+                          {slow && (
+                            <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-xs text-amber-700">
+                              high in / low out
+                            </span>
+                          )}
+                        </td>
+                        <td className="table-td text-right">{formatMoney(s.purchaseIn)}</td>
+                        <td className="table-td text-right">{formatMoney(s.salesOut)}</td>
+                        <td className="table-td text-right">{formatMoney(s.cogs)}</td>
+                        <td
+                          className={`table-td text-right font-semibold ${
+                            s.profit >= 0 ? "text-green-700" : "text-red-600"
+                          }`}
+                        >
+                          {formatMoney(s.profit)}
+                        </td>
+                        <td className="table-td text-right">{s.marginPct}%</td>
+                        <td className="table-td text-right">{s.productCount}</td>
+                      </tr>
+                    );
+                  })}
+                  {analysis.suppliers.length === 0 && (
+                    <tr>
+                      <td className="table-td text-gray-400" colSpan={7}>
+                        No suppliers yet. Add suppliers and link them to products to see this.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+            <p className="px-5 py-3 text-xs text-gray-400">
+              <b>In</b> = total you purchased from the supplier. <b>Out</b> = sales of their
+              products. <b>Profit</b> = sales of their products − their cost. Sorted best-first.
+              "High in / low out" flags suppliers you bought a lot from but sold little.
+            </p>
+          </div>
+        </>
       )}
 
       {/* Per-bill P&L statement modal */}
