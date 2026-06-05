@@ -1,13 +1,15 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { clearSession } from "@/lib/api";
+import { api, clearSession } from "@/lib/api";
 
 const nav = [
   { href: "/overview", label: "Overview", icon: "📈" },
   { href: "/shops", label: "Shop Details", icon: "🏪" },
   { href: "/reports", label: "Reports", icon: "📊" },
+  { href: "/approvals", label: "Approvals", icon: "✅" },
   { href: "/shop-logins", label: "Shop Logins", icon: "🔑" },
   { href: "/businesses", label: "Businesses", icon: "🏢" },
   { href: "/users", label: "Users", icon: "👤" },
@@ -16,6 +18,13 @@ const nav = [
 export default function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
+  const [pending, setPending] = useState(0);
+
+  useEffect(() => {
+    api<{ pendingCount: number }>("/api/admin/change-requests?status=PENDING")
+      .then((r) => setPending(r.pendingCount))
+      .catch(() => {});
+  }, [pathname]);
 
   function logout() {
     clearSession();
@@ -37,7 +46,12 @@ export default function Sidebar() {
               }`}
             >
               <span>{item.icon}</span>
-              {item.label}
+              <span className="flex-1">{item.label}</span>
+              {item.href === "/approvals" && pending > 0 && (
+                <span className="rounded-full bg-red-500 px-2 py-0.5 text-xs font-semibold text-white">
+                  {pending}
+                </span>
+              )}
             </Link>
           );
         })}
