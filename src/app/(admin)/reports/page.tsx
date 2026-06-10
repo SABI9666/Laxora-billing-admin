@@ -33,6 +33,7 @@ type CashBook = {
 type Voucher = {
   id: string;
   direction: "IN" | "OUT";
+  purpose?: string | null;
   amount: string;
   method: string;
   paymentDate: string;
@@ -781,9 +782,11 @@ export default function ReportsPage() {
                         .map((v) => (
                           <tr key={v.id}>
                             <td className="table-td">{formatDate(v.paymentDate)}</td>
-                            <td className="table-td font-medium">{v.party?.name ?? "—"}</td>
+                            <td className="table-td font-medium">
+                              {v.party?.name ?? v.purpose ?? "—"}
+                            </td>
                             <td className="table-td text-gray-500">
-                              {v.invoice?.invoiceNumber ?? "—"}
+                              {v.invoice?.invoiceNumber ?? v.purpose ?? "—"}
                             </td>
                             <td className="table-td">{v.method}</td>
                             <td
