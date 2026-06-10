@@ -6,7 +6,40 @@ import { formatMoney, formatDate } from "@/lib/format";
 import PageHeader from "@/components/PageHeader";
 
 type Shop = { id: string; name: string; code?: string | null };
-type Tab = "sales" | "pnl" | "customers" | "suppliers" | "analysis";
+type Tab = "sales" | "pnl" | "customers" | "suppliers" | "analysis" | "cashbook";
+
+type CashBook = {
+  openingCash: number;
+  openingBank: number;
+  cashBalance: number;
+  bankBalance: number;
+  toReceive: number;
+  toPay: number;
+  days: {
+    day: string;
+    credit: number;
+    debit: number;
+    inCash: number;
+    inBank: number;
+    outCash: number;
+    outBank: number;
+    cashBalance: number;
+    bankBalance: number;
+  }[];
+  receivables: { id: string; number: string; party: string; date: string; total: number; paid: number; due: number }[];
+  payables: { id: string; number: string; party: string; date: string; total: number; paid: number; due: number }[];
+};
+
+type Voucher = {
+  id: string;
+  direction: "IN" | "OUT";
+  amount: string;
+  method: string;
+  paymentDate: string;
+  notes?: string | null;
+  party?: { name: string } | null;
+  invoice?: { invoiceNumber: string } | null;
+};
 
 type SupplierAnalysis = {
   best: { name: string; profit: number; marginPct: number } | null;
@@ -127,6 +160,7 @@ const TABS: { key: Tab; label: string }[] = [
   { key: "customers", label: "Customer Ledger" },
   { key: "suppliers", label: "Purchase Ledger" },
   { key: "analysis", label: "Supplier Analysis" },
+  { key: "cashbook", label: "Cash Book" },
 ];
 
 export default function ReportsPage() {
@@ -142,6 +176,10 @@ export default function ReportsPage() {
   const [parties, setParties] = useState<PartyRow[]>([]);
   const [ledger, setLedger] = useState<Ledger | null>(null);
   const [analysis, setAnalysis] = useState<SupplierAnalysis | null>(null);
+  const [cashbook, setCashbook] = useState<CashBook | null>(null);
+  const [vouchers, setVouchers] = useState<Voucher[]>([]);
+  // Which bill list popup is open from the cash book KPIs.
+  const [billsView, setBillsView] = useState<"receivables" | "payables" | null>(null);
 
   const range = () => {
     const q = new URLSearchParams();
@@ -167,6 +205,13 @@ export default function ReportsPage() {
       setPnl(await api(`/api/admin/businesses/${shopId}/pnl${range()}`));
     } else if (tab === "analysis") {
       setAnalysis(await api(`/api/admin/businesses/${shopId}/suppliers-analysis${range()}`));
+    } else if (tab === "cashbook") {
+      const [cb, v] = await Promise.all([
+        api<CashBook>(`/api/admin/businesses/${shopId}/cashbook${range()}`),
+        api<{ payments: Voucher[] }>(`/api/admin/businesses/${shopId}/vouchers${range()}`),
+      ]);
+      setCashbook(cb);
+      setVouchers(v.payments);
     } else {
       const type = tab === "customers" ? "CUSTOMER" : "SUPPLIER";
       const r = await api<{ parties: PartyRow[] }>(
@@ -189,7 +234,8 @@ export default function ReportsPage() {
     setBillPnl(await api(`/api/admin/invoices/${invoiceId}/pnl`));
   }
 
-  const showDates = tab === "sales" || tab === "pnl" || tab === "analysis";
+  const showDates =
+    tab === "sales" || tab === "pnl" || tab === "analysis" || tab === "cashbook";
 
   return (
     <div>
@@ -633,6 +679,205 @@ export default function ReportsPage() {
             </p>
           </div>
         </>
+      )}
+
+      {/* CASH BOOK */}
+      {tab === "cashbook" && cashbook && (
+        <>
+          <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
+            <div className="card">
+              <p className="text-sm text-gray-500">💵 Cash balance</p>
+              <p className="mt-1 text-2xl font-bold">{formatMoney(cashbook.cashBalance)}</p>
+              <p className="text-xs text-gray-400">opening {formatMoney(cashbook.openingCash)}</p>
+            </div>
+            <div className="card">
+              <p className="text-sm text-gray-500">🏦 Bank balance</p>
+              <p className="mt-1 text-2xl font-bold">{formatMoney(cashbook.bankBalance)}</p>
+              <p className="text-xs text-gray-400">opening {formatMoney(cashbook.openingBank)}</p>
+            </div>
+            <button
+              className="card text-left transition hover:border-brand"
+              onClick={() => setBillsView("receivables")}
+            >
+              <p className="text-sm text-gray-500">📥 Balance to receive</p>
+              <p className="mt-1 text-2xl font-bold text-green-700">
+                {formatMoney(cashbook.toReceive)}
+              </p>
+              <p className="text-xs text-brand">click to see the bills →</p>
+            </button>
+            <button
+              className="card text-left transition hover:border-brand"
+              onClick={() => setBillsView("payables")}
+            >
+              <p className="text-sm text-gray-500">📤 Balance to pay</p>
+              <p className="mt-1 text-2xl font-bold text-red-600">
+                {formatMoney(cashbook.toPay)}
+              </p>
+              <p className="text-xs text-brand">click to see the bills →</p>
+            </button>
+          </div>
+
+          {/* Daily credit / debit with running balances */}
+          <div className="card mb-6 p-0">
+            <div className="border-b px-5 py-3 font-semibold">Daily Cash Book</div>
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="table-th">Date</th>
+                    <th className="table-th text-right">Credit (In)</th>
+                    <th className="table-th text-right">Debit (Out)</th>
+                    <th className="table-th text-right">Cash Balance</th>
+                    <th className="table-th text-right">Bank Balance</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {cashbook.days.map((d) => (
+                    <tr key={d.day}>
+                      <td className="table-td font-medium">{d.day}</td>
+                      <td className="table-td text-right text-green-700">
+                        {d.credit ? `+${formatMoney(d.credit)}` : "—"}
+                      </td>
+                      <td className="table-td text-right text-red-600">
+                        {d.debit ? `−${formatMoney(d.debit)}` : "—"}
+                      </td>
+                      <td className="table-td text-right">{formatMoney(d.cashBalance)}</td>
+                      <td className="table-td text-right">{formatMoney(d.bankBalance)}</td>
+                    </tr>
+                  ))}
+                  {cashbook.days.length === 0 && (
+                    <tr>
+                      <td className="table-td text-gray-400" colSpan={5}>
+                        No vouchers in this period.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Credit report / payment report */}
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+            {(["IN", "OUT"] as const).map((dir) => (
+              <div key={dir} className="card p-0">
+                <div className="border-b px-5 py-3 font-semibold">
+                  {dir === "IN" ? "Credit Report (money received)" : "Payment Report (money given)"}
+                </div>
+                <div className="max-h-96 overflow-y-auto">
+                  <table className="w-full">
+                    <thead className="sticky top-0 bg-gray-50">
+                      <tr>
+                        <th className="table-th">Date</th>
+                        <th className="table-th">Party</th>
+                        <th className="table-th">Bill</th>
+                        <th className="table-th">Mode</th>
+                        <th className="table-th text-right">Amount</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {vouchers
+                        .filter((v) => (v.direction ?? "IN") === dir)
+                        .map((v) => (
+                          <tr key={v.id}>
+                            <td className="table-td">{formatDate(v.paymentDate)}</td>
+                            <td className="table-td font-medium">{v.party?.name ?? "—"}</td>
+                            <td className="table-td text-gray-500">
+                              {v.invoice?.invoiceNumber ?? "—"}
+                            </td>
+                            <td className="table-td">{v.method}</td>
+                            <td
+                              className={`table-td text-right font-semibold ${
+                                dir === "IN" ? "text-green-700" : "text-red-600"
+                              }`}
+                            >
+                              {formatMoney(v.amount)}
+                            </td>
+                          </tr>
+                        ))}
+                      {vouchers.filter((v) => (v.direction ?? "IN") === dir).length === 0 && (
+                        <tr>
+                          <td className="table-td text-gray-400" colSpan={5}>
+                            None in this period.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
+      {/* Receivable / payable bill list popup */}
+      {billsView && cashbook && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          onClick={() => setBillsView(null)}
+        >
+          <div
+            className="w-full max-w-2xl rounded-xl bg-white shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b px-5 py-4">
+              <h2 className="text-lg font-semibold">
+                {billsView === "receivables"
+                  ? `Bills to receive — ${formatMoney(cashbook.toReceive)}`
+                  : `Bills to pay — ${formatMoney(cashbook.toPay)}`}
+              </h2>
+              <button
+                onClick={() => setBillsView(null)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="max-h-[60vh] overflow-y-auto">
+              <table className="w-full">
+                <thead className="sticky top-0 bg-gray-50">
+                  <tr>
+                    <th className="table-th">Bill</th>
+                    <th className="table-th">{billsView === "receivables" ? "Customer" : "Supplier"}</th>
+                    <th className="table-th">Date</th>
+                    <th className="table-th text-right">Total</th>
+                    <th className="table-th text-right">Paid</th>
+                    <th className="table-th text-right">Due</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {(billsView === "receivables" ? cashbook.receivables : cashbook.payables).map(
+                    (b) => (
+                      <tr key={b.id}>
+                        <td className="table-td font-medium">{b.number}</td>
+                        <td className="table-td">{b.party}</td>
+                        <td className="table-td">{formatDate(b.date)}</td>
+                        <td className="table-td text-right">{formatMoney(b.total)}</td>
+                        <td className="table-td text-right">{formatMoney(b.paid)}</td>
+                        <td
+                          className={`table-td text-right font-bold ${
+                            billsView === "receivables" ? "text-green-700" : "text-red-600"
+                          }`}
+                        >
+                          {formatMoney(b.due)}
+                        </td>
+                      </tr>
+                    )
+                  )}
+                  {(billsView === "receivables" ? cashbook.receivables : cashbook.payables)
+                    .length === 0 && (
+                    <tr>
+                      <td className="table-td text-gray-400" colSpan={6}>
+                        Nothing pending. 🎉
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Per-bill P&L statement modal */}
