@@ -15,6 +15,17 @@ type Request = {
 };
 type Detail = { request: Request; item: Record<string, any> | null };
 
+type DeleteRequest = {
+  id: string;
+  invoiceId: string;
+  invoiceNumber: string;
+  partyName?: string | null;
+  total: string;
+  requestedByName?: string | null;
+  createdAt: string;
+  business?: { name: string } | null;
+};
+
 // Friendly labels for the product fields.
 const LABELS: Record<string, string> = {
   name: "Name",
@@ -39,12 +50,42 @@ const show = (v: any) =>
 
 export default function ApprovalsPage() {
   const [requests, setRequests] = useState<Request[]>([]);
+  const [deleteReqs, setDeleteReqs] = useState<DeleteRequest[]>([]);
   const [detail, setDetail] = useState<Detail | null>(null);
   const [busy, setBusy] = useState(false);
 
   async function load() {
-    const r = await api<{ requests: Request[] }>("/api/admin/change-requests?status=PENDING");
+    const [r, d] = await Promise.all([
+      api<{ requests: Request[] }>("/api/admin/change-requests?status=PENDING"),
+      api<{ requests: DeleteRequest[] }>("/api/admin/delete-requests?status=PENDING"),
+    ]);
     setRequests(r.requests);
+    setDeleteReqs(d.requests);
+  }
+
+  async function approveDelete(d: DeleteRequest) {
+    if (
+      !confirm(
+        `Approve deletion of ${d.invoiceNumber} (${formatMoneySafe(d.total)})? Stock will be restored and the bill removed.`
+      )
+    )
+      return;
+    await api(`/api/admin/delete-requests/${d.id}/approve`, { method: "POST" });
+    await load();
+  }
+
+  async function rejectDelete(d: DeleteRequest) {
+    await api(`/api/admin/delete-requests/${d.id}/reject`, { method: "POST" });
+    await load();
+  }
+
+  function formatMoneySafe(v: string | number) {
+    const n = Number(v);
+    return new Intl.NumberFormat("en-IN", {
+      style: "currency",
+      currency: "INR",
+      maximumFractionDigits: 2,
+    }).format(isNaN(n) ? 0 : n);
   }
   useEffect(() => {
     load();
@@ -129,6 +170,73 @@ export default function ApprovalsPage() {
               <tr>
                 <td className="table-td text-gray-400" colSpan={5}>
                   No pending product edits. 🎉
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Invoice deletion requests */}
+      <h2 className="mb-2 mt-8 text-lg font-bold text-slate-800">Invoice Deletions</h2>
+      <p className="mb-4 text-sm text-gray-500">
+        Bills a shop wants to delete. <b>Approve</b> removes the bill and restores stock;{" "}
+        <b>Reject</b> keeps it.
+      </p>
+      <div className="card p-0">
+        <table className="w-full">
+          <thead className="bg-gray-50">
+            <tr>
+              <th className="table-th">Bill</th>
+              <th className="table-th">Party</th>
+              <th className="table-th">Shop</th>
+              <th className="table-th text-right">Amount</th>
+              <th className="table-th">Requested by</th>
+              <th className="table-th">When</th>
+              <th className="table-th"></th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {deleteReqs.map((d) => (
+              <tr key={d.id}>
+                <td className="table-td">
+                  <a
+                    href={`/invoices/${d.invoiceId}`}
+                    target="_blank"
+                    className="font-medium text-brand hover:underline"
+                  >
+                    {d.invoiceNumber} ↗
+                  </a>
+                </td>
+                <td className="table-td text-gray-500">{d.partyName ?? "—"}</td>
+                <td className="table-td text-gray-500">{d.business?.name ?? "—"}</td>
+                <td className="table-td text-right font-semibold">
+                  {formatMoneySafe(d.total)}
+                </td>
+                <td className="table-td text-gray-500">{d.requestedByName ?? "—"}</td>
+                <td className="table-td text-gray-500">{formatDate(d.createdAt)}</td>
+                <td className="table-td text-right">
+                  <button
+                    onClick={() => approveDelete(d)}
+                    disabled={busy}
+                    className="mr-3 font-medium text-red-600 hover:underline"
+                  >
+                    Approve Delete
+                  </button>
+                  <button
+                    onClick={() => rejectDelete(d)}
+                    disabled={busy}
+                    className="text-gray-500 hover:underline"
+                  >
+                    Reject
+                  </button>
+                </td>
+              </tr>
+            ))}
+            {deleteReqs.length === 0 && (
+              <tr>
+                <td className="table-td text-gray-400" colSpan={7}>
+                  No pending invoice deletions. 🎉
                 </td>
               </tr>
             )}
