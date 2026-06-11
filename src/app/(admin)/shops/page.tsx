@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { api } from "@/lib/api";
 import { formatMoney } from "@/lib/format";
 import PageHeader from "@/components/PageHeader";
@@ -150,7 +151,15 @@ export default function ShopsPage() {
                 <tbody className="divide-y divide-gray-100">
                   {details.recentInvoices.map((inv) => (
                     <tr key={inv.id}>
-                      <td className="table-td font-medium">{inv.invoiceNumber}</td>
+                      <td className="table-td">
+                        <Link
+                          href={`/invoices/${inv.id}`}
+                          target="_blank"
+                          className="font-medium text-brand hover:underline"
+                        >
+                          {inv.invoiceNumber} ↗
+                        </Link>
+                      </td>
                       <td className="table-td">{inv.party?.name ?? "—"}</td>
                       <td className="table-td">{inv.type}</td>
                       <td className="table-td text-right">{formatMoney(inv.total)}</td>

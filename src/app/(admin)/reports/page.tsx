@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { api } from "@/lib/api";
 import { formatMoney, formatDate } from "@/lib/format";
 import PageHeader from "@/components/PageHeader";
@@ -853,7 +854,16 @@ export default function ReportsPage() {
                   {(billsView === "receivables" ? cashbook.receivables : cashbook.payables).map(
                     (b) => (
                       <tr key={b.id}>
-                        <td className="table-td font-medium">{b.number}</td>
+                        <td className="table-td">
+                          <Link
+                            href={`/invoices/${b.id}`}
+                            target="_blank"
+                            className="font-medium text-brand hover:underline"
+                            title="Open invoice"
+                          >
+                            {b.number} ↗
+                          </Link>
+                        </td>
                         <td className="table-td">{b.party}</td>
                         <td className="table-td">{formatDate(b.date)}</td>
                         <td className="table-td text-right">{formatMoney(b.total)}</td>
