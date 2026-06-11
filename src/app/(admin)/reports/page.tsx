@@ -151,7 +151,7 @@ function ProfitChart({ data }: { data: Pnl["monthly"] }) {
 }
 type PartyRow = { id: string; name: string; phone?: string | null; billed: number; paid: number; balance: number };
 type Ledger = {
-  party: { name: string; type: string; openingBalance: number };
+  party: { id: string; name: string; type: string; openingBalance: number };
   closingBalance: number;
   ledger: { date: string; kind: string; ref: string; debit: number; credit: number; balance: number }[];
 };
@@ -541,8 +541,17 @@ export default function ReportsPage() {
           </div>
 
           <div className="card p-0">
-            <div className="border-b px-5 py-3 font-semibold">
-              {ledger ? `${ledger.party.name} — Ledger` : "Select a name to view ledger"}
+            <div className="flex items-center justify-between border-b px-5 py-3 font-semibold">
+              <span>{ledger ? `${ledger.party.name} — Ledger` : "Select a name to view ledger"}</span>
+              {ledger && (
+                <Link
+                  href={`/ledger/${ledger.party.id}`}
+                  target="_blank"
+                  className="text-sm font-medium text-brand hover:underline"
+                >
+                  🖨️ Print / PDF
+                </Link>
+              )}
             </div>
             {ledger && (
               <>
