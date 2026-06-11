@@ -54,6 +54,23 @@ type SupplierAnalysis = {
     profit: number;
     marginPct: number;
     productCount: number;
+    stockValue: number;
+  }[];
+};
+
+type SupplierStock = {
+  supplier: { id: string; name: string };
+  totalValue: number;
+  items: {
+    id: string;
+    name: string;
+    sku?: string | null;
+    unit: string;
+    stockQty: number;
+    purchasePrice: number;
+    salePrice: number;
+    low: boolean;
+    value: number;
   }[];
 };
 
@@ -178,6 +195,7 @@ export default function ReportsPage() {
   const [parties, setParties] = useState<PartyRow[]>([]);
   const [ledger, setLedger] = useState<Ledger | null>(null);
   const [analysis, setAnalysis] = useState<SupplierAnalysis | null>(null);
+  const [supplierStock, setSupplierStock] = useState<SupplierStock | null>(null);
   const [cashbook, setCashbook] = useState<CashBook | null>(null);
   const [vouchers, setVouchers] = useState<Voucher[]>([]);
   // Which bill list popup is open from the cash book KPIs.
@@ -234,6 +252,10 @@ export default function ReportsPage() {
 
   async function openBillPnl(invoiceId: string) {
     setBillPnl(await api(`/api/admin/invoices/${invoiceId}/pnl`));
+  }
+
+  async function openSupplierStock(partyId: string) {
+    setSupplierStock(await api(`/api/admin/parties/${partyId}/stock`));
   }
 
   const showDates =
@@ -641,6 +663,7 @@ export default function ReportsPage() {
                     <th className="table-th text-right">Cost</th>
                     <th className="table-th text-right">Profit</th>
                     <th className="table-th text-right">Margin</th>
+                    <th className="table-th text-right">Stock Value</th>
                     <th className="table-th text-right">Products</th>
                   </tr>
                 </thead>
@@ -669,13 +692,22 @@ export default function ReportsPage() {
                           {formatMoney(s.profit)}
                         </td>
                         <td className="table-td text-right">{s.marginPct}%</td>
+                        <td className="table-td text-right">
+                          <button
+                            onClick={() => openSupplierStock(s.id)}
+                            className="font-medium text-brand hover:underline"
+                            title="See this supplier's stock items"
+                          >
+                            {formatMoney(s.stockValue)}
+                          </button>
+                        </td>
                         <td className="table-td text-right">{s.productCount}</td>
                       </tr>
                     );
                   })}
                   {analysis.suppliers.length === 0 && (
                     <tr>
-                      <td className="table-td text-gray-400" colSpan={7}>
+                      <td className="table-td text-gray-400" colSpan={8}>
                         No suppliers yet. Add suppliers and link them to products to see this.
                       </td>
                     </tr>
@@ -685,11 +717,88 @@ export default function ReportsPage() {
             </div>
             <p className="px-5 py-3 text-xs text-gray-400">
               <b>In</b> = total you purchased from the supplier. <b>Out</b> = sales of their
-              products. <b>Profit</b> = sales of their products − their cost. Sorted best-first.
-              "High in / low out" flags suppliers you bought a lot from but sold little.
+              products. <b>Profit</b> = sales of their products − their cost. <b>Stock Value</b> =
+              their products still on the shelf (qty × cost) — click it to see the items.
+              Sorted best-first. "High in / low out" flags suppliers you bought a lot from but
+              sold little.
             </p>
           </div>
         </>
+      )}
+
+      {/* Supplier stock items popup */}
+      {supplierStock && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          onClick={() => setSupplierStock(null)}
+        >
+          <div
+            className="w-full max-w-2xl rounded-xl bg-white shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b px-5 py-4">
+              <div>
+                <h2 className="text-lg font-semibold">
+                  Stock from {supplierStock.supplier.name}
+                </h2>
+                <p className="text-xs text-gray-500">
+                  Total stock value: <b>{formatMoney(supplierStock.totalValue)}</b>
+                </p>
+              </div>
+              <button
+                onClick={() => setSupplierStock(null)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="max-h-[60vh] overflow-y-auto">
+              <table className="w-full">
+                <thead className="sticky top-0 bg-gray-50">
+                  <tr>
+                    <th className="table-th">Product</th>
+                    <th className="table-th">SKU</th>
+                    <th className="table-th text-right">On hand</th>
+                    <th className="table-th text-right">Cost</th>
+                    <th className="table-th text-right">Sale Price</th>
+                    <th className="table-th text-right">Stock Value</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {supplierStock.items.map((it) => (
+                    <tr key={it.id}>
+                      <td className="table-td font-medium">
+                        {it.name}
+                        {it.low && (
+                          <span className="ml-2 rounded bg-red-100 px-1.5 py-0.5 text-xs text-red-700">
+                            low stock
+                          </span>
+                        )}
+                      </td>
+                      <td className="table-td text-gray-500">{it.sku || "—"}</td>
+                      <td className="table-td text-right">
+                        {it.stockQty} {it.unit}
+                      </td>
+                      <td className="table-td text-right">{formatMoney(it.purchasePrice)}</td>
+                      <td className="table-td text-right">{formatMoney(it.salePrice)}</td>
+                      <td className="table-td text-right font-semibold">
+                        {formatMoney(it.value)}
+                      </td>
+                    </tr>
+                  ))}
+                  {supplierStock.items.length === 0 && (
+                    <tr>
+                      <td className="table-td text-gray-400" colSpan={6}>
+                        No products linked to this supplier yet. Set the supplier on each
+                        product in the shop's Products page.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* CASH BOOK */}
