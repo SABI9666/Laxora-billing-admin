@@ -60,6 +60,7 @@ type SupplierAnalysis = {
 
 type SupplierStock = {
   supplier: { id: string; name: string };
+  asOf: string | null;
   totalValue: number;
   items: {
     id: string;
@@ -67,6 +68,8 @@ type SupplierStock = {
     sku?: string | null;
     unit: string;
     stockQty: number;
+    stockIn: number;
+    stockOut: number;
     purchasePrice: number;
     salePrice: number;
     low: boolean;
@@ -255,7 +258,7 @@ export default function ReportsPage() {
   }
 
   async function openSupplierStock(partyId: string) {
-    setSupplierStock(await api(`/api/admin/parties/${partyId}/stock`));
+    setSupplierStock(await api(`/api/admin/parties/${partyId}/stock${range()}`));
   }
 
   const showDates =
@@ -742,7 +745,8 @@ export default function ReportsPage() {
                   Stock from {supplierStock.supplier.name}
                 </h2>
                 <p className="text-xs text-gray-500">
-                  Total stock value: <b>{formatMoney(supplierStock.totalValue)}</b>
+                  Total stock value <b>{formatMoney(supplierStock.totalValue)}</b>
+                  {supplierStock.asOf ? ` · as of ${formatDate(supplierStock.asOf)}` : " · current"}
                 </p>
               </div>
               <button
@@ -757,10 +761,10 @@ export default function ReportsPage() {
                 <thead className="sticky top-0 bg-gray-50">
                   <tr>
                     <th className="table-th">Product</th>
-                    <th className="table-th">SKU</th>
+                    <th className="table-th text-right">Stock In</th>
+                    <th className="table-th text-right">Stock Out</th>
                     <th className="table-th text-right">On hand</th>
                     <th className="table-th text-right">Cost</th>
-                    <th className="table-th text-right">Sale Price</th>
                     <th className="table-th text-right">Stock Value</th>
                   </tr>
                 </thead>
@@ -775,12 +779,16 @@ export default function ReportsPage() {
                           </span>
                         )}
                       </td>
-                      <td className="table-td text-gray-500">{it.sku || "—"}</td>
-                      <td className="table-td text-right">
+                      <td className="table-td text-right text-green-700">
+                        {it.stockIn ? `+${it.stockIn}` : "—"}
+                      </td>
+                      <td className="table-td text-right text-red-600">
+                        {it.stockOut ? `−${it.stockOut}` : "—"}
+                      </td>
+                      <td className="table-td text-right font-medium">
                         {it.stockQty} {it.unit}
                       </td>
                       <td className="table-td text-right">{formatMoney(it.purchasePrice)}</td>
-                      <td className="table-td text-right">{formatMoney(it.salePrice)}</td>
                       <td className="table-td text-right font-semibold">
                         {formatMoney(it.value)}
                       </td>
