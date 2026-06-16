@@ -355,6 +355,32 @@ export default function ReportsPage() {
     setItemMoves(await api(`/api/admin/items/${itemId}/movements${range()}`));
   }
 
+  const [backfilling, setBackfilling] = useState(false);
+  async function backfillEntryDates() {
+    if (
+      !confirm(
+        "Set today's entry date for all existing products that don't have one yet? " +
+          "Products added later keep their real entry date. This is safe to run again."
+      )
+    )
+      return;
+    setBackfilling(true);
+    try {
+      const r = await api<{ backfilled: number }>(
+        "/api/admin/stock/backfill-entry-dates",
+        { method: "POST" }
+      );
+      await loadReport();
+      alert(
+        r.backfilled > 0
+          ? `Entry date set to today for ${r.backfilled} product(s).`
+          : "All products already have an entry date — nothing to update."
+      );
+    } finally {
+      setBackfilling(false);
+    }
+  }
+
   const showDates =
     tab === "sales" ||
     tab === "pnl" ||
@@ -1028,11 +1054,21 @@ export default function ReportsPage() {
 
           {/* Full movement register */}
           <div className="card p-0">
-            <div className="border-b px-5 py-3 font-semibold">
-              Material Movement Register{" "}
-              <span className="font-normal text-gray-400">
-                (click a product for its full entry / exit history)
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b px-5 py-3">
+              <span className="font-semibold">
+                Material Movement Register{" "}
+                <span className="font-normal text-gray-400">
+                  (click a product for its full entry / exit history)
+                </span>
               </span>
+              <button
+                onClick={backfillEntryDates}
+                disabled={backfilling}
+                className="rounded-lg border border-brand px-3 py-1.5 text-sm font-medium text-brand transition hover:bg-brand-light disabled:opacity-50"
+                title="Give existing products without an entry date today's date"
+              >
+                {backfilling ? "Setting…" : "Set entry date for old stock"}
+              </button>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full">
