@@ -7,7 +7,83 @@ import { formatMoney, formatDate } from "@/lib/format";
 import PageHeader from "@/components/PageHeader";
 
 type Shop = { id: string; name: string; code?: string | null };
-type Tab = "sales" | "pnl" | "customers" | "suppliers" | "analysis" | "cashbook";
+type Tab =
+  | "sales"
+  | "pnl"
+  | "customers"
+  | "suppliers"
+  | "analysis"
+  | "stock"
+  | "cashbook";
+
+type StockItem = {
+  id: string;
+  name: string;
+  sku?: string | null;
+  brand?: string | null;
+  unit: string;
+  purchasePrice: number;
+  salePrice: number;
+  onHand: number;
+  inQty: number;
+  outQty: number;
+  inValue: number;
+  outValue: number;
+  value: number;
+  firstIn: string | null;
+  lastIn: string | null;
+  lastOut: string | null;
+  ageDays: number | null;
+  stockedDays: number | null;
+  daysCover: number | null;
+  velocity: number;
+  low: boolean;
+  idle: boolean;
+};
+
+type StockReport = {
+  shop: string;
+  asOf: string;
+  totals: {
+    products: number;
+    stockValue: number;
+    inQty: number;
+    outQty: number;
+    inValue: number;
+    outValue: number;
+    lowStock: number;
+    idle: number;
+  };
+  fastMoving: StockItem[];
+  slowMoving: StockItem[];
+  items: StockItem[];
+};
+
+type ItemMovements = {
+  item: {
+    id: string;
+    name: string;
+    sku?: string | null;
+    unit: string;
+    brand?: string | null;
+    stockQty: number;
+    purchasePrice: number;
+    salePrice: number;
+    shop: string;
+    supplier?: string | null;
+  };
+  summary: { inQty: number; outQty: number; count: number };
+  movements: {
+    id: string;
+    type: string;
+    quantity: number;
+    balanceAfter: number;
+    reason?: string | null;
+    reference?: string | null;
+    invoiceId?: string | null;
+    date: string;
+  }[];
+};
 
 type CashBook = {
   openingCash: number;
@@ -176,12 +252,22 @@ type Ledger = {
   ledger: { date: string; kind: string; ref: string; debit: number; credit: number; balance: number }[];
 };
 
+// Human-friendly labels for the stock ledger's movement types.
+const MOVE_LABELS: Record<string, string> = {
+  IN: "Stock In",
+  OUT: "Sale / Issue",
+  ADJUST: "Adjustment",
+  TRANSFER_IN: "Transfer In",
+  TRANSFER_OUT: "Transfer Out",
+};
+
 const TABS: { key: Tab; label: string }[] = [
   { key: "sales", label: "Sales Report" },
   { key: "pnl", label: "Profit & Loss" },
   { key: "customers", label: "Customer Ledger" },
   { key: "suppliers", label: "Purchase Ledger" },
   { key: "analysis", label: "Supplier Analysis" },
+  { key: "stock", label: "Stock Movement" },
   { key: "cashbook", label: "Cash Book" },
 ];
 
@@ -201,6 +287,8 @@ export default function ReportsPage() {
   const [supplierStock, setSupplierStock] = useState<SupplierStock | null>(null);
   const [cashbook, setCashbook] = useState<CashBook | null>(null);
   const [vouchers, setVouchers] = useState<Voucher[]>([]);
+  const [stock, setStock] = useState<StockReport | null>(null);
+  const [itemMoves, setItemMoves] = useState<ItemMovements | null>(null);
   // Which bill list popup is open from the cash book KPIs.
   const [billsView, setBillsView] = useState<"receivables" | "payables" | null>(null);
 
@@ -228,6 +316,8 @@ export default function ReportsPage() {
       setPnl(await api(`/api/admin/businesses/${shopId}/pnl${range()}`));
     } else if (tab === "analysis") {
       setAnalysis(await api(`/api/admin/businesses/${shopId}/suppliers-analysis${range()}`));
+    } else if (tab === "stock") {
+      setStock(await api(`/api/admin/businesses/${shopId}/stock-movement${range()}`));
     } else if (tab === "cashbook") {
       const [cb, v] = await Promise.all([
         api<CashBook>(`/api/admin/businesses/${shopId}/cashbook${range()}`),
@@ -261,8 +351,16 @@ export default function ReportsPage() {
     setSupplierStock(await api(`/api/admin/parties/${partyId}/stock${range()}`));
   }
 
+  async function openItemMovements(itemId: string) {
+    setItemMoves(await api(`/api/admin/items/${itemId}/movements${range()}`));
+  }
+
   const showDates =
-    tab === "sales" || tab === "pnl" || tab === "analysis" || tab === "cashbook";
+    tab === "sales" ||
+    tab === "pnl" ||
+    tab === "analysis" ||
+    tab === "stock" ||
+    tab === "cashbook";
 
   return (
     <div>
@@ -799,6 +897,301 @@ export default function ReportsPage() {
                       <td className="table-td text-gray-400" colSpan={6}>
                         No products linked to this supplier yet. Set the supplier on each
                         product in the shop's Products page.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* STOCK MOVEMENT */}
+      {tab === "stock" && stock && (
+        <>
+          {/* Headline KPIs */}
+          <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
+            <div className="card">
+              <p className="text-sm text-gray-500">📦 Stock value (on hand)</p>
+              <p className="mt-1 text-2xl font-bold">{formatMoney(stock.totals.stockValue)}</p>
+              <p className="text-xs text-gray-400">{stock.totals.products} products</p>
+            </div>
+            <div className="card">
+              <p className="text-sm text-gray-500">📥 Stock In</p>
+              <p className="mt-1 text-2xl font-bold text-green-700">
+                {stock.totals.inQty}
+              </p>
+              <p className="text-xs text-gray-400">{formatMoney(stock.totals.inValue)} at cost</p>
+            </div>
+            <div className="card">
+              <p className="text-sm text-gray-500">📤 Stock Out</p>
+              <p className="mt-1 text-2xl font-bold text-red-600">{stock.totals.outQty}</p>
+              <p className="text-xs text-gray-400">{formatMoney(stock.totals.outValue)} at cost</p>
+            </div>
+            <div className="card">
+              <p className="text-sm text-gray-500">🐌 Idle / low</p>
+              <p className="mt-1 text-2xl font-bold">
+                {stock.totals.idle}
+                <span className="text-base font-medium text-gray-400"> idle</span>
+              </p>
+              <p className="text-xs text-amber-600">{stock.totals.lowStock} below reorder</p>
+            </div>
+          </div>
+
+          {/* Fast moving vs most days in stock */}
+          <div className="mb-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
+            <div className="card p-0">
+              <div className="border-b px-5 py-3 font-semibold">
+                ⚡ Fastest-moving material{" "}
+                <span className="font-normal text-gray-400">(most sold in period)</span>
+              </div>
+              <table className="w-full">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="table-th">Product</th>
+                    <th className="table-th text-right">Sold (Out)</th>
+                    <th className="table-th text-right">On hand</th>
+                    <th className="table-th text-right">Days cover</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {stock.fastMoving.map((it) => (
+                    <tr
+                      key={it.id}
+                      className="cursor-pointer hover:bg-gray-50"
+                      onClick={() => openItemMovements(it.id)}
+                    >
+                      <td className="table-td font-medium text-brand">{it.name}</td>
+                      <td className="table-td text-right font-semibold text-red-600">
+                        {it.outQty} {it.unit}
+                      </td>
+                      <td className="table-td text-right">{it.onHand}</td>
+                      <td className="table-td text-right">
+                        {it.daysCover != null ? `${it.daysCover}d` : "—"}
+                      </td>
+                    </tr>
+                  ))}
+                  {stock.fastMoving.length === 0 && (
+                    <tr>
+                      <td className="table-td text-gray-400" colSpan={4}>
+                        No outward movement in this period.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="card p-0">
+              <div className="border-b px-5 py-3 font-semibold">
+                🕒 Most days in stock{" "}
+                <span className="font-normal text-gray-400">(slow / sitting longest)</span>
+              </div>
+              <table className="w-full">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="table-th">Product</th>
+                    <th className="table-th text-right">Days idle</th>
+                    <th className="table-th text-right">On hand</th>
+                    <th className="table-th text-right">Value</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {stock.slowMoving.map((it) => (
+                    <tr
+                      key={it.id}
+                      className="cursor-pointer hover:bg-gray-50"
+                      onClick={() => openItemMovements(it.id)}
+                    >
+                      <td className="table-td font-medium text-brand">{it.name}</td>
+                      <td className="table-td text-right font-semibold text-amber-700">
+                        {it.stockedDays != null ? `${it.stockedDays}d` : "—"}
+                      </td>
+                      <td className="table-td text-right">
+                        {it.onHand} {it.unit}
+                      </td>
+                      <td className="table-td text-right">{formatMoney(it.value)}</td>
+                    </tr>
+                  ))}
+                  {stock.slowMoving.length === 0 && (
+                    <tr>
+                      <td className="table-td text-gray-400" colSpan={4}>
+                        Nothing on hand yet.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Full movement register */}
+          <div className="card p-0">
+            <div className="border-b px-5 py-3 font-semibold">
+              Material Movement Register{" "}
+              <span className="font-normal text-gray-400">
+                (click a product for its full entry / exit history)
+              </span>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="table-th">Product</th>
+                    <th className="table-th">First In</th>
+                    <th className="table-th">Last In</th>
+                    <th className="table-th">Last Out</th>
+                    <th className="table-th text-right">In</th>
+                    <th className="table-th text-right">Out</th>
+                    <th className="table-th text-right">On hand</th>
+                    <th className="table-th text-right">Days idle</th>
+                    <th className="table-th text-right">Value</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {stock.items.map((it) => (
+                    <tr
+                      key={it.id}
+                      className="cursor-pointer hover:bg-gray-50"
+                      onClick={() => openItemMovements(it.id)}
+                    >
+                      <td className="table-td font-medium text-brand">
+                        {it.name}
+                        {it.low && (
+                          <span className="ml-2 rounded bg-red-100 px-1.5 py-0.5 text-xs text-red-700">
+                            low
+                          </span>
+                        )}
+                        {it.idle && (
+                          <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-xs text-amber-700">
+                            idle
+                          </span>
+                        )}
+                      </td>
+                      <td className="table-td text-gray-500">
+                        {it.firstIn ? formatDate(it.firstIn) : "—"}
+                      </td>
+                      <td className="table-td text-gray-500">
+                        {it.lastIn ? formatDate(it.lastIn) : "—"}
+                      </td>
+                      <td className="table-td text-gray-500">
+                        {it.lastOut ? formatDate(it.lastOut) : "—"}
+                      </td>
+                      <td className="table-td text-right text-green-700">
+                        {it.inQty ? `+${it.inQty}` : "—"}
+                      </td>
+                      <td className="table-td text-right text-red-600">
+                        {it.outQty ? `−${it.outQty}` : "—"}
+                      </td>
+                      <td className="table-td text-right font-medium">
+                        {it.onHand} {it.unit}
+                      </td>
+                      <td className="table-td text-right">
+                        {it.stockedDays != null ? `${it.stockedDays}d` : "—"}
+                      </td>
+                      <td className="table-td text-right font-semibold">
+                        {formatMoney(it.value)}
+                      </td>
+                    </tr>
+                  ))}
+                  {stock.items.length === 0 && (
+                    <tr>
+                      <td className="table-td text-gray-400" colSpan={9}>
+                        No products with stock tracking in this shop yet.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+            <p className="px-5 py-3 text-xs text-gray-400">
+              <b>In / Out</b> are the units that entered or left within the selected period.{" "}
+              <b>On hand</b> is the balance as of the "To" date. <b>Days idle</b> = days since the
+              product last moved out — high values flag slow / dead stock. Click any product to see
+              every entry and exit with the running balance.
+            </p>
+          </div>
+        </>
+      )}
+
+      {/* Per-product entry / exit timeline modal */}
+      {itemMoves && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          onClick={() => setItemMoves(null)}
+        >
+          <div
+            className="w-full max-w-2xl rounded-xl bg-white shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b px-5 py-4">
+              <div>
+                <h2 className="text-lg font-semibold">{itemMoves.item.name}</h2>
+                <p className="text-xs text-gray-500">
+                  {itemMoves.item.sku ? `${itemMoves.item.sku} · ` : ""}
+                  On hand <b>{itemMoves.item.stockQty} {itemMoves.item.unit}</b> ·{" "}
+                  In <span className="text-green-700">+{itemMoves.summary.inQty}</span> ·{" "}
+                  Out <span className="text-red-600">−{itemMoves.summary.outQty}</span>
+                  {itemMoves.item.supplier ? ` · Supplier: ${itemMoves.item.supplier}` : ""}
+                </p>
+              </div>
+              <button
+                onClick={() => setItemMoves(null)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="max-h-[60vh] overflow-y-auto">
+              <table className="w-full">
+                <thead className="sticky top-0 bg-gray-50">
+                  <tr>
+                    <th className="table-th">Date</th>
+                    <th className="table-th">Movement</th>
+                    <th className="table-th">Reference</th>
+                    <th className="table-th text-right">Change</th>
+                    <th className="table-th text-right">Balance</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {itemMoves.movements.map((m) => {
+                    const inward = m.quantity >= 0;
+                    return (
+                      <tr key={m.id}>
+                        <td className="table-td">{formatDate(m.date)}</td>
+                        <td className="table-td">
+                          <span
+                            className={`rounded px-1.5 py-0.5 text-xs font-medium ${
+                              inward
+                                ? "bg-green-100 text-green-700"
+                                : "bg-red-100 text-red-600"
+                            }`}
+                          >
+                            {MOVE_LABELS[m.type] ?? m.type}
+                          </span>
+                          {m.reason ? (
+                            <span className="ml-2 text-gray-500">{m.reason}</span>
+                          ) : null}
+                        </td>
+                        <td className="table-td text-gray-500">{m.reference ?? "—"}</td>
+                        <td
+                          className={`table-td text-right font-semibold ${
+                            inward ? "text-green-700" : "text-red-600"
+                          }`}
+                        >
+                          {inward ? `+${m.quantity}` : m.quantity}
+                        </td>
+                        <td className="table-td text-right font-medium">
+                          {m.balanceAfter} {itemMoves.item.unit}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {itemMoves.movements.length === 0 && (
+                    <tr>
+                      <td className="table-td text-gray-400" colSpan={5}>
+                        No movements recorded for this product in this period.
                       </td>
                     </tr>
                   )}
