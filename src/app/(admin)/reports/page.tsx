@@ -879,7 +879,7 @@ export default function ReportsPage() {
                   </span>
                 </div>
                 <p className="px-5 pb-3 text-xs text-gray-400">
-                  "Billed" adds to what they owe; "Paid / Return" reduces it. A balance due means
+                  &quot;Billed&quot; adds to what they owe; &quot;Paid / Return&quot; reduces it. A balance due means
                   the customer still owes you.
                 </p>
               </>
@@ -1130,7 +1130,7 @@ export default function ReportsPage() {
                     <tr>
                       <td className="table-td text-gray-400" colSpan={6}>
                         No products linked to this supplier yet. Set the supplier on each
-                        product in the shop's Products page.
+                        product in the shop&apos;s Products page.
                       </td>
                     </tr>
                   )}
@@ -1351,7 +1351,7 @@ export default function ReportsPage() {
             </div>
             <p className="px-5 py-3 text-xs text-gray-400">
               <b>In / Out</b> are the units that entered or left within the selected period.{" "}
-              <b>On hand</b> is the balance as of the "To" date. <b>Days idle</b> = days since the
+              <b>On hand</b> is the balance as of the &quot;To&quot; date. <b>Days idle</b> = days since the
               product last moved out — high values flag slow / dead stock. Click any product to see
               every entry and exit with the running balance.
             </p>
@@ -1776,14 +1776,5 @@ function Line({
       <span className={bold ? "font-semibold text-gray-800" : "text-gray-500"}>{label}</span>
       <span className={`${bold ? "font-semibold" : ""} ${valueClass}`}>{value}</span>
     </div>
-  );
-}
-
-function Row({ label, value, bold }: { label: string; value: string; bold?: boolean }) {
-  return (
-    <tr className={bold ? "font-semibold" : ""}>
-      <td className="py-1.5 text-gray-600">{label}</td>
-      <td className="py-1.5 text-right">{value}</td>
-    </tr>
   );
 }
