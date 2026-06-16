@@ -168,9 +168,29 @@ type SupplierStock = {
   }[];
 };
 
+// A per-channel set of totals (retail/POS or online).
+type ChannelTotals = { total: number; tax: number; count: number };
+type SalesPeriodRow = {
+  // `period` is the new label (month/quarter/year); `month` kept for old API.
+  period?: string;
+  month: string;
+  count: number;
+  total: number;
+  tax: number;
+  online?: ChannelTotals;
+  retail?: ChannelTotals;
+};
 type SalesReport = {
-  months: { month: string; count: number; total: number; tax: number }[];
-  totals: { total: number; tax: number; count: number };
+  groupBy?: "month" | "quarter" | "year";
+  periods?: SalesPeriodRow[];
+  months: SalesPeriodRow[];
+  totals: {
+    total: number;
+    tax: number;
+    count: number;
+    online?: ChannelTotals;
+    retail?: ChannelTotals;
+  };
 };
 type Pnl = {
   pnl: {
@@ -286,12 +306,16 @@ const TABS: { key: Tab; label: string }[] = [
   { key: "cashbook", label: "Cash Book" },
 ];
 
+const ZERO_CHANNEL: ChannelTotals = { total: 0, tax: 0, count: 0 };
+
 export default function ReportsPage() {
   const [shops, setShops] = useState<Shop[]>([]);
   const [shopId, setShopId] = useState("");
   const [tab, setTab] = useState<Tab>("sales");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
+  // Sales report period grouping.
+  const [groupBy, setGroupBy] = useState<"month" | "quarter" | "year">("month");
 
   const [sales, setSales] = useState<SalesReport | null>(null);
   const [pnl, setPnl] = useState<Pnl | null>(null);
@@ -331,7 +355,11 @@ export default function ReportsPage() {
     setLoading(true);
     try {
       if (tab === "sales") {
-        setSales(await api(`/api/admin/businesses/${shopId}/sales-report${range()}`));
+        const q = new URLSearchParams();
+        if (from) q.set("from", from);
+        if (to) q.set("to", to);
+        q.set("groupBy", groupBy);
+        setSales(await api(`/api/admin/businesses/${shopId}/sales-report?${q.toString()}`));
       } else if (tab === "pnl") {
         setPnl(await api(`/api/admin/businesses/${shopId}/pnl${range()}`));
       } else if (tab === "analysis") {
@@ -367,7 +395,7 @@ export default function ReportsPage() {
   useEffect(() => {
     loadReport();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [shopId, tab]);
+  }, [shopId, tab, groupBy]);
 
   async function openLedger(partyId: string) {
     setLedger(await api(`/api/admin/parties/${partyId}/ledger`));
@@ -493,53 +521,106 @@ export default function ReportsPage() {
       )}
 
       {/* SALES REPORT */}
-      {tab === "sales" && sales && (
-        <>
-          <div className="mb-4 grid grid-cols-2 gap-4 lg:grid-cols-3">
-            <div className="card">
-              <p className="text-sm text-gray-500">Total Sales</p>
-              <p className="mt-1 text-2xl font-bold">{formatMoney(sales.totals.total)}</p>
+      {tab === "sales" && sales && (() => {
+        const retail = sales.totals.retail ?? ZERO_CHANNEL;
+        const online = sales.totals.online ?? ZERO_CHANNEL;
+        const rows = sales.periods ?? sales.months ?? [];
+        const periodLabel =
+          groupBy === "year" ? "Year" : groupBy === "quarter" ? "Quarter" : "Month";
+        return (
+          <>
+            {/* Period grouping */}
+            <div className="mb-4 flex flex-wrap items-center gap-2">
+              <span className="text-sm text-gray-500">Group by</span>
+              {(["month", "quarter", "year"] as const).map((g) => (
+                <button
+                  key={g}
+                  onClick={() => setGroupBy(g)}
+                  className={`rounded-lg px-3 py-1.5 text-sm font-medium capitalize ${
+                    groupBy === g
+                      ? "bg-brand text-white"
+                      : "border border-gray-200 bg-white text-gray-600"
+                  }`}
+                >
+                  {g}
+                </button>
+              ))}
             </div>
-            <div className="card">
-              <p className="text-sm text-gray-500">Tax Collected</p>
-              <p className="mt-1 text-2xl font-bold">{formatMoney(sales.totals.tax)}</p>
+
+            {/* Channel split KPIs */}
+            <div className="mb-4 grid grid-cols-2 gap-4 lg:grid-cols-4">
+              <div className="card">
+                <p className="text-sm text-gray-500">Total Sales</p>
+                <p className="mt-1 text-2xl font-bold">{formatMoney(sales.totals.total)}</p>
+                <p className="mt-1 text-xs text-gray-400">{sales.totals.count} bills</p>
+              </div>
+              <div className="card border-l-4 border-l-blue-400">
+                <p className="text-sm text-gray-500">🏪 Retail (Counter)</p>
+                <p className="mt-1 text-2xl font-bold">{formatMoney(retail.total)}</p>
+                <p className="mt-1 text-xs text-gray-400">{retail.count} bills</p>
+              </div>
+              <div className="card border-l-4 border-l-green-500">
+                <p className="text-sm text-gray-500">🌐 Online (Website)</p>
+                <p className="mt-1 text-2xl font-bold">{formatMoney(online.total)}</p>
+                <p className="mt-1 text-xs text-gray-400">{online.count} bills</p>
+              </div>
+              <div className="card">
+                <p className="text-sm text-gray-500">Tax Collected</p>
+                <p className="mt-1 text-2xl font-bold">{formatMoney(sales.totals.tax)}</p>
+              </div>
             </div>
-            <div className="card">
-              <p className="text-sm text-gray-500">Bills</p>
-              <p className="mt-1 text-2xl font-bold">{sales.totals.count}</p>
+
+            {/* Period breakdown: retail vs online vs total */}
+            <div className="card p-0">
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="table-th">{periodLabel}</th>
+                      <th className="table-th text-right">Retail Bills</th>
+                      <th className="table-th text-right">Retail Sales</th>
+                      <th className="table-th text-right">Online Bills</th>
+                      <th className="table-th text-right">Online Sales</th>
+                      <th className="table-th text-right">Total Bills</th>
+                      <th className="table-th text-right">Tax</th>
+                      <th className="table-th text-right">Total Sales</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {rows.map((m) => {
+                      const r = m.retail ?? ZERO_CHANNEL;
+                      const o = m.online ?? ZERO_CHANNEL;
+                      return (
+                        <tr key={m.period ?? m.month}>
+                          <td className="table-td font-medium">{m.period ?? m.month}</td>
+                          <td className="table-td text-right">{r.count}</td>
+                          <td className="table-td text-right">{formatMoney(r.total)}</td>
+                          <td className="table-td text-right">{o.count}</td>
+                          <td className="table-td text-right text-green-700">
+                            {formatMoney(o.total)}
+                          </td>
+                          <td className="table-td text-right">{m.count}</td>
+                          <td className="table-td text-right">{formatMoney(m.tax)}</td>
+                          <td className="table-td text-right font-semibold">
+                            {formatMoney(m.total)}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                    {rows.length === 0 && (
+                      <tr>
+                        <td className="table-td text-gray-400" colSpan={8}>
+                          No sales in this period.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
-          </div>
-          <div className="card p-0">
-            <table className="w-full">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="table-th">Month</th>
-                  <th className="table-th text-right">Bills</th>
-                  <th className="table-th text-right">Tax</th>
-                  <th className="table-th text-right">Sales</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {sales.months.map((m) => (
-                  <tr key={m.month}>
-                    <td className="table-td font-medium">{m.month}</td>
-                    <td className="table-td text-right">{m.count}</td>
-                    <td className="table-td text-right">{formatMoney(m.tax)}</td>
-                    <td className="table-td text-right">{formatMoney(m.total)}</td>
-                  </tr>
-                ))}
-                {sales.months.length === 0 && (
-                  <tr>
-                    <td className="table-td text-gray-400" colSpan={4}>
-                      No sales in this period.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </>
-      )}
+          </>
+        );
+      })()}
 
       {/* PROFIT & LOSS */}
       {tab === "pnl" && pnl && (
