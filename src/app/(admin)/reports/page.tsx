@@ -121,14 +121,29 @@ type Voucher = {
 
 type SupplierAnalysis = {
   best: { name: string; profit: number; marginPct: number } | null;
+  fastest: { name: string; unitsOut: number; salesOut: number } | null;
+  mostIdle: { name: string; idleValue: number; idleCount: number } | null;
+  cashFlow: {
+    purchased: number;
+    paid: number;
+    stockValue: number;
+    idleValue: number;
+    payableDelta: number;
+  };
   suppliers: {
     id: string;
     name: string;
     purchaseIn: number;
+    paidInPeriod: number;
+    payableDelta: number;
     salesOut: number;
     cogs: number;
     profit: number;
     marginPct: number;
+    unitsIn: number;
+    unitsOut: number;
+    idleValue: number;
+    idleCount: number;
     productCount: number;
     stockValue: number;
   }[];
@@ -289,6 +304,8 @@ export default function ReportsPage() {
   const [vouchers, setVouchers] = useState<Voucher[]>([]);
   const [stock, setStock] = useState<StockReport | null>(null);
   const [itemMoves, setItemMoves] = useState<ItemMovements | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   // Which bill list popup is open from the cash book KPIs.
   const [billsView, setBillsView] = useState<"receivables" | "payables" | null>(null);
 
@@ -310,27 +327,40 @@ export default function ReportsPage() {
   async function loadReport() {
     if (!shopId) return;
     setLedger(null);
-    if (tab === "sales") {
-      setSales(await api(`/api/admin/businesses/${shopId}/sales-report${range()}`));
-    } else if (tab === "pnl") {
-      setPnl(await api(`/api/admin/businesses/${shopId}/pnl${range()}`));
-    } else if (tab === "analysis") {
-      setAnalysis(await api(`/api/admin/businesses/${shopId}/suppliers-analysis${range()}`));
-    } else if (tab === "stock") {
-      setStock(await api(`/api/admin/businesses/${shopId}/stock-movement${range()}`));
-    } else if (tab === "cashbook") {
-      const [cb, v] = await Promise.all([
-        api<CashBook>(`/api/admin/businesses/${shopId}/cashbook${range()}`),
-        api<{ payments: Voucher[] }>(`/api/admin/businesses/${shopId}/vouchers${range()}`),
-      ]);
-      setCashbook(cb);
-      setVouchers(v.payments);
-    } else {
-      const type = tab === "customers" ? "CUSTOMER" : "SUPPLIER";
-      const r = await api<{ parties: PartyRow[] }>(
-        `/api/admin/businesses/${shopId}/parties?type=${type}`
+    setError(null);
+    setLoading(true);
+    try {
+      if (tab === "sales") {
+        setSales(await api(`/api/admin/businesses/${shopId}/sales-report${range()}`));
+      } else if (tab === "pnl") {
+        setPnl(await api(`/api/admin/businesses/${shopId}/pnl${range()}`));
+      } else if (tab === "analysis") {
+        setAnalysis(await api(`/api/admin/businesses/${shopId}/suppliers-analysis${range()}`));
+      } else if (tab === "stock") {
+        setStock(await api(`/api/admin/businesses/${shopId}/stock-movement${range()}`));
+      } else if (tab === "cashbook") {
+        const [cb, v] = await Promise.all([
+          api<CashBook>(`/api/admin/businesses/${shopId}/cashbook${range()}`),
+          api<{ payments: Voucher[] }>(`/api/admin/businesses/${shopId}/vouchers${range()}`),
+        ]);
+        setCashbook(cb);
+        setVouchers(v.payments);
+      } else {
+        const type = tab === "customers" ? "CUSTOMER" : "SUPPLIER";
+        const r = await api<{ parties: PartyRow[] }>(
+          `/api/admin/businesses/${shopId}/parties?type=${type}`
+        );
+        setParties(r.parties);
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Failed to load this report.";
+      setError(
+        msg === "Not Found" || /not found|404/i.test(msg)
+          ? "This report isn't available yet — the backend API may need to be redeployed with the latest update."
+          : msg
       );
-      setParties(r.parties);
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -353,6 +383,32 @@ export default function ReportsPage() {
 
   async function openItemMovements(itemId: string) {
     setItemMoves(await api(`/api/admin/items/${itemId}/movements${range()}`));
+  }
+
+  const [backfilling, setBackfilling] = useState(false);
+  async function backfillEntryDates() {
+    if (
+      !confirm(
+        "Set today's entry date for all existing products that don't have one yet? " +
+          "Products added later keep their real entry date. This is safe to run again."
+      )
+    )
+      return;
+    setBackfilling(true);
+    try {
+      const r = await api<{ backfilled: number }>(
+        "/api/admin/stock/backfill-entry-dates",
+        { method: "POST" }
+      );
+      await loadReport();
+      alert(
+        r.backfilled > 0
+          ? `Entry date set to today for ${r.backfilled} product(s).`
+          : "All products already have an entry date — nothing to update."
+      );
+    } finally {
+      setBackfilling(false);
+    }
   }
 
   const showDates =
@@ -423,6 +479,16 @@ export default function ReportsPage() {
               Clear
             </button>
           )}
+        </div>
+      )}
+
+      {/* Loading / error feedback so the page is never silently blank */}
+      {loading && (
+        <div className="card text-sm text-gray-500">Loading report…</div>
+      )}
+      {!loading && error && (
+        <div className="card border-red-200 bg-red-50 text-sm text-red-700">
+          {error}
         </div>
       )}
 
@@ -744,26 +810,95 @@ export default function ReportsPage() {
       {/* SUPPLIER ANALYSIS */}
       {tab === "analysis" && analysis && (
         <>
-          {analysis.best && (
-            <div className="card mb-4 flex flex-wrap items-center justify-between gap-2">
-              <span className="text-sm text-gray-500">🏆 Best-performing supplier</span>
-              <span className="font-semibold">
-                {analysis.best.name} · profit {formatMoney(analysis.best.profit)} ·{" "}
-                {analysis.best.marginPct}% margin
-              </span>
+          {/* Smart highlights: who performs, who moves fast, whose stock is dead */}
+          <div className="mb-4 grid grid-cols-1 gap-4 lg:grid-cols-3">
+            <div className="card">
+              <p className="text-sm text-gray-500">🏆 Best-performing supplier</p>
+              {analysis.best ? (
+                <>
+                  <p className="mt-1 text-lg font-bold">{analysis.best.name}</p>
+                  <p className="text-xs text-gray-400">
+                    profit {formatMoney(analysis.best.profit)} · {analysis.best.marginPct}% margin
+                  </p>
+                </>
+              ) : (
+                <p className="mt-1 text-sm text-gray-400">No profit data yet.</p>
+              )}
             </div>
-          )}
+            <div className="card">
+              <p className="text-sm text-gray-500">⚡ Fastest-moving supplier</p>
+              {analysis.fastest ? (
+                <>
+                  <p className="mt-1 text-lg font-bold">{analysis.fastest.name}</p>
+                  <p className="text-xs text-gray-400">
+                    {analysis.fastest.unitsOut} units sold · {formatMoney(analysis.fastest.salesOut)}
+                  </p>
+                </>
+              ) : (
+                <p className="mt-1 text-sm text-gray-400">No movement this period.</p>
+              )}
+            </div>
+            <div className="card">
+              <p className="text-sm text-gray-500">🐌 Most idle stock (supplier)</p>
+              {analysis.mostIdle ? (
+                <>
+                  <p className="mt-1 text-lg font-bold">{analysis.mostIdle.name}</p>
+                  <p className="text-xs text-amber-600">
+                    {formatMoney(analysis.mostIdle.idleValue)} unsold ·{" "}
+                    {analysis.mostIdle.idleCount} products
+                  </p>
+                </>
+              ) : (
+                <p className="mt-1 text-sm text-gray-400">No idle stock 🎉</p>
+              )}
+            </div>
+          </div>
+
+          {/* Cash flow with suppliers this period */}
+          <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
+            <div className="card">
+              <p className="text-sm text-gray-500">🛒 Purchased</p>
+              <p className="mt-1 text-2xl font-bold">{formatMoney(analysis.cashFlow.purchased)}</p>
+            </div>
+            <div className="card">
+              <p className="text-sm text-gray-500">💸 Paid to suppliers</p>
+              <p className="mt-1 text-2xl font-bold text-red-600">
+                {formatMoney(analysis.cashFlow.paid)}
+              </p>
+            </div>
+            <div className="card">
+              <p className="text-sm text-gray-500">🧾 Added to payable</p>
+              <p
+                className={`mt-1 text-2xl font-bold ${
+                  analysis.cashFlow.payableDelta > 0 ? "text-amber-700" : "text-green-700"
+                }`}
+              >
+                {formatMoney(analysis.cashFlow.payableDelta)}
+              </p>
+              <p className="text-xs text-gray-400">purchased − paid</p>
+            </div>
+            <div className="card">
+              <p className="text-sm text-gray-500">📦 Idle stock value</p>
+              <p className="mt-1 text-2xl font-bold text-amber-700">
+                {formatMoney(analysis.cashFlow.idleValue)}
+              </p>
+              <p className="text-xs text-gray-400">of {formatMoney(analysis.cashFlow.stockValue)} on hand</p>
+            </div>
+          </div>
+
           <div className="card p-0">
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead className="bg-gray-50">
                   <tr>
                     <th className="table-th">Supplier</th>
-                    <th className="table-th text-right">Purchased (In)</th>
+                    <th className="table-th text-right">Purchased</th>
+                    <th className="table-th text-right">Paid</th>
                     <th className="table-th text-right">Sold (Out)</th>
-                    <th className="table-th text-right">Cost</th>
+                    <th className="table-th text-right">Units Out</th>
                     <th className="table-th text-right">Profit</th>
                     <th className="table-th text-right">Margin</th>
+                    <th className="table-th text-right">Idle Value</th>
                     <th className="table-th text-right">Stock Value</th>
                     <th className="table-th text-right">Products</th>
                   </tr>
@@ -772,19 +907,34 @@ export default function ReportsPage() {
                   {analysis.suppliers.map((s) => {
                     // Slow supplier: bought a lot but sold little.
                     const slow = s.purchaseIn > 0 && s.salesOut < s.purchaseIn * 0.5;
+                    const fast =
+                      analysis.fastest != null && s.name === analysis.fastest.name && s.unitsOut > 0;
                     return (
                       <tr key={s.id}>
                         <td className="table-td font-medium">
                           {s.name}
+                          {fast && (
+                            <span className="ml-2 rounded bg-green-100 px-1.5 py-0.5 text-xs text-green-700">
+                              fast mover
+                            </span>
+                          )}
                           {slow && (
                             <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-xs text-amber-700">
                               high in / low out
                             </span>
                           )}
+                          {s.idleValue > 0 && (
+                            <span className="ml-2 rounded bg-red-100 px-1.5 py-0.5 text-xs text-red-700">
+                              {s.idleCount} idle
+                            </span>
+                          )}
                         </td>
                         <td className="table-td text-right">{formatMoney(s.purchaseIn)}</td>
+                        <td className="table-td text-right text-red-600">
+                          {formatMoney(s.paidInPeriod)}
+                        </td>
                         <td className="table-td text-right">{formatMoney(s.salesOut)}</td>
-                        <td className="table-td text-right">{formatMoney(s.cogs)}</td>
+                        <td className="table-td text-right">{s.unitsOut || "—"}</td>
                         <td
                           className={`table-td text-right font-semibold ${
                             s.profit >= 0 ? "text-green-700" : "text-red-600"
@@ -793,6 +943,9 @@ export default function ReportsPage() {
                           {formatMoney(s.profit)}
                         </td>
                         <td className="table-td text-right">{s.marginPct}%</td>
+                        <td className="table-td text-right text-amber-700">
+                          {s.idleValue ? formatMoney(s.idleValue) : "—"}
+                        </td>
                         <td className="table-td text-right">
                           <button
                             onClick={() => openSupplierStock(s.id)}
@@ -808,7 +961,7 @@ export default function ReportsPage() {
                   })}
                   {analysis.suppliers.length === 0 && (
                     <tr>
-                      <td className="table-td text-gray-400" colSpan={8}>
+                      <td className="table-td text-gray-400" colSpan={10}>
                         No suppliers yet. Add suppliers and link them to products to see this.
                       </td>
                     </tr>
@@ -817,11 +970,11 @@ export default function ReportsPage() {
               </table>
             </div>
             <p className="px-5 py-3 text-xs text-gray-400">
-              <b>In</b> = total you purchased from the supplier. <b>Out</b> = sales of their
-              products. <b>Profit</b> = sales of their products − their cost. <b>Stock Value</b> =
-              their products still on the shelf (qty × cost) — click it to see the items.
-              Sorted best-first. "High in / low out" flags suppliers you bought a lot from but
-              sold little.
+              <b>Purchased</b> = bills raised to the supplier · <b>Paid</b> = cash given to them in
+              this period · <b>Sold / Units Out</b> = how fast their products move ·{" "}
+              <b>Profit</b> = sales of their products − cost · <b>Idle Value</b> = their stock that
+              had no sale this period (dead money) · <b>Stock Value</b> = all their stock on hand
+              (click to see items). Sorted best-first; badges flag fast movers and idle stock.
             </p>
           </div>
         </>
@@ -1028,11 +1181,21 @@ export default function ReportsPage() {
 
           {/* Full movement register */}
           <div className="card p-0">
-            <div className="border-b px-5 py-3 font-semibold">
-              Material Movement Register{" "}
-              <span className="font-normal text-gray-400">
-                (click a product for its full entry / exit history)
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b px-5 py-3">
+              <span className="font-semibold">
+                Material Movement Register{" "}
+                <span className="font-normal text-gray-400">
+                  (click a product for its full entry / exit history)
+                </span>
               </span>
+              <button
+                onClick={backfillEntryDates}
+                disabled={backfilling}
+                className="rounded-lg border border-brand px-3 py-1.5 text-sm font-medium text-brand transition hover:bg-brand-light disabled:opacity-50"
+                title="Give existing products without an entry date today's date"
+              >
+                {backfilling ? "Setting…" : "Set entry date for old stock"}
+              </button>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full">
