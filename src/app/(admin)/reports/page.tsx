@@ -289,6 +289,8 @@ export default function ReportsPage() {
   const [vouchers, setVouchers] = useState<Voucher[]>([]);
   const [stock, setStock] = useState<StockReport | null>(null);
   const [itemMoves, setItemMoves] = useState<ItemMovements | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   // Which bill list popup is open from the cash book KPIs.
   const [billsView, setBillsView] = useState<"receivables" | "payables" | null>(null);
 
@@ -310,27 +312,40 @@ export default function ReportsPage() {
   async function loadReport() {
     if (!shopId) return;
     setLedger(null);
-    if (tab === "sales") {
-      setSales(await api(`/api/admin/businesses/${shopId}/sales-report${range()}`));
-    } else if (tab === "pnl") {
-      setPnl(await api(`/api/admin/businesses/${shopId}/pnl${range()}`));
-    } else if (tab === "analysis") {
-      setAnalysis(await api(`/api/admin/businesses/${shopId}/suppliers-analysis${range()}`));
-    } else if (tab === "stock") {
-      setStock(await api(`/api/admin/businesses/${shopId}/stock-movement${range()}`));
-    } else if (tab === "cashbook") {
-      const [cb, v] = await Promise.all([
-        api<CashBook>(`/api/admin/businesses/${shopId}/cashbook${range()}`),
-        api<{ payments: Voucher[] }>(`/api/admin/businesses/${shopId}/vouchers${range()}`),
-      ]);
-      setCashbook(cb);
-      setVouchers(v.payments);
-    } else {
-      const type = tab === "customers" ? "CUSTOMER" : "SUPPLIER";
-      const r = await api<{ parties: PartyRow[] }>(
-        `/api/admin/businesses/${shopId}/parties?type=${type}`
+    setError(null);
+    setLoading(true);
+    try {
+      if (tab === "sales") {
+        setSales(await api(`/api/admin/businesses/${shopId}/sales-report${range()}`));
+      } else if (tab === "pnl") {
+        setPnl(await api(`/api/admin/businesses/${shopId}/pnl${range()}`));
+      } else if (tab === "analysis") {
+        setAnalysis(await api(`/api/admin/businesses/${shopId}/suppliers-analysis${range()}`));
+      } else if (tab === "stock") {
+        setStock(await api(`/api/admin/businesses/${shopId}/stock-movement${range()}`));
+      } else if (tab === "cashbook") {
+        const [cb, v] = await Promise.all([
+          api<CashBook>(`/api/admin/businesses/${shopId}/cashbook${range()}`),
+          api<{ payments: Voucher[] }>(`/api/admin/businesses/${shopId}/vouchers${range()}`),
+        ]);
+        setCashbook(cb);
+        setVouchers(v.payments);
+      } else {
+        const type = tab === "customers" ? "CUSTOMER" : "SUPPLIER";
+        const r = await api<{ parties: PartyRow[] }>(
+          `/api/admin/businesses/${shopId}/parties?type=${type}`
+        );
+        setParties(r.parties);
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Failed to load this report.";
+      setError(
+        msg === "Not Found" || /not found|404/i.test(msg)
+          ? "This report isn't available yet — the backend API may need to be redeployed with the latest update."
+          : msg
       );
-      setParties(r.parties);
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -449,6 +464,16 @@ export default function ReportsPage() {
               Clear
             </button>
           )}
+        </div>
+      )}
+
+      {/* Loading / error feedback so the page is never silently blank */}
+      {loading && (
+        <div className="card text-sm text-gray-500">Loading report…</div>
+      )}
+      {!loading && error && (
+        <div className="card border-red-200 bg-red-50 text-sm text-red-700">
+          {error}
         </div>
       )}
 
