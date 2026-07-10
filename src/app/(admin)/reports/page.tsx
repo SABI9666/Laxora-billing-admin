@@ -446,6 +446,9 @@ export default function ReportsPage() {
     tab === "stock" ||
     tab === "cashbook";
 
+  // Total of all balances in the current ledger list (payable / receivable).
+  const partiesTotal = parties.reduce((s, p) => s + Number(p.balance), 0);
+
   return (
     <div>
       <PageHeader
@@ -808,6 +811,14 @@ export default function ReportsPage() {
                 )}
               </tbody>
             </table>
+            {parties.length > 0 && (
+              <div className="flex items-center justify-between border-t px-5 py-3 font-semibold">
+                <span>{tab === "suppliers" ? "Total Payable" : "Total Receivable"}</span>
+                <span className={tab === "suppliers" ? "text-red-600" : "text-green-700"}>
+                  {formatMoney(partiesTotal)}
+                </span>
+              </div>
+            )}
           </div>
 
           <div className="card p-0">
