@@ -199,6 +199,7 @@ type Pnl = {
     outstanding: number;
     returns: number;
     salesNet: number;
+    serviceIncome: number;
     cogs: number;
     grossProfit: number;
     grossMarginPct: number;
@@ -211,7 +212,14 @@ type Pnl = {
     salesCount: number;
     purchaseCount: number;
   };
-  monthly: { month: string; salesNet: number; cogs: number; expenses: number; profit: number }[];
+  monthly: {
+    month: string;
+    salesNet: number;
+    serviceIncome?: number;
+    cogs: number;
+    expenses: number;
+    profit: number;
+  }[];
   bills: {
     id: string;
     number: string;
@@ -734,6 +742,13 @@ export default function ReportsPage() {
                   <span>Net Sales</span>
                   <span>{formatMoney(pnl.pnl.salesNet)}</span>
                 </div>
+                {pnl.pnl.serviceIncome > 0 && (
+                  <Line
+                    label="Service / other income"
+                    value={`+ ${formatMoney(pnl.pnl.serviceIncome)}`}
+                    valueClass="text-green-700"
+                  />
+                )}
               </section>
 
               <section>
