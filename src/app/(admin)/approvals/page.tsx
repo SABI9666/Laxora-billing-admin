@@ -26,6 +26,20 @@ type DeleteRequest = {
   business?: { name: string } | null;
 };
 
+type ReturnDeleteRequest = {
+  id: string;
+  creditNoteId: string;
+  invoiceId?: string | null;
+  invoiceNumber?: string | null;
+  partyName?: string | null;
+  amount: string;
+  refundMethod?: string | null;
+  reason?: string | null;
+  requestedByName?: string | null;
+  createdAt: string;
+  business?: { name: string } | null;
+};
+
 // Friendly labels for the product fields.
 const LABELS: Record<string, string> = {
   name: "Name",
@@ -51,16 +65,53 @@ const show = (v: any) =>
 export default function ApprovalsPage() {
   const [requests, setRequests] = useState<Request[]>([]);
   const [deleteReqs, setDeleteReqs] = useState<DeleteRequest[]>([]);
+  const [returnDeleteReqs, setReturnDeleteReqs] = useState<ReturnDeleteRequest[]>([]);
   const [detail, setDetail] = useState<Detail | null>(null);
   const [busy, setBusy] = useState(false);
 
   async function load() {
-    const [r, d] = await Promise.all([
+    const [r, d, rd] = await Promise.all([
       api<{ requests: Request[] }>("/api/admin/change-requests?status=PENDING"),
       api<{ requests: DeleteRequest[] }>("/api/admin/delete-requests?status=PENDING"),
+      api<{ requests: ReturnDeleteRequest[] }>(
+        "/api/admin/return-delete-requests?status=PENDING"
+      ),
     ]);
     setRequests(r.requests);
     setDeleteReqs(d.requests);
+    setReturnDeleteReqs(rd.requests);
+  }
+
+  async function approveReturnDelete(d: ReturnDeleteRequest) {
+    if (
+      !confirm(
+        `Approve deletion of this return (${formatMoneySafe(d.amount)}) on ${
+          d.invoiceNumber ?? "the bill"
+        }? The items go back to sold, the stock it added is removed, and any cash refund is reversed.`
+      )
+    )
+      return;
+    setBusy(true);
+    try {
+      await api(`/api/admin/return-delete-requests/${d.id}/approve`, { method: "POST" });
+      await load();
+    } catch (e) {
+      alert(e instanceof ApiError ? e.message : "Failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function rejectReturnDelete(d: ReturnDeleteRequest) {
+    setBusy(true);
+    try {
+      await api(`/api/admin/return-delete-requests/${d.id}/reject`, { method: "POST" });
+      await load();
+    } catch (e) {
+      alert(e instanceof ApiError ? e.message : "Failed");
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function approveDelete(d: DeleteRequest) {
@@ -237,6 +288,82 @@ export default function ApprovalsPage() {
               <tr>
                 <td className="table-td text-gray-400" colSpan={7}>
                   No pending invoice deletions. 🎉
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Sales-return deletion requests */}
+      <h2 className="mb-2 mt-8 text-lg font-bold text-slate-800">Return Deletions</h2>
+      <p className="mb-4 text-sm text-gray-500">
+        Wrong returns a shop wants to undo. <b>Approve</b> puts the items back as sold,
+        removes the stock the return added, and reverses any cash refund; <b>Reject</b> keeps
+        the return.
+      </p>
+      <div className="card p-0">
+        <table className="w-full">
+          <thead className="bg-gray-50">
+            <tr>
+              <th className="table-th">Bill</th>
+              <th className="table-th">Party</th>
+              <th className="table-th">Shop</th>
+              <th className="table-th text-right">Return amount</th>
+              <th className="table-th">Refund</th>
+              <th className="table-th">Requested by</th>
+              <th className="table-th">When</th>
+              <th className="table-th"></th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {returnDeleteReqs.map((d) => (
+              <tr key={d.id}>
+                <td className="table-td">
+                  {d.invoiceId ? (
+                    <a
+                      href={`/invoices/${d.invoiceId}`}
+                      target="_blank"
+                      className="font-medium text-brand hover:underline"
+                    >
+                      {d.invoiceNumber ?? "Bill"} ↗
+                    </a>
+                  ) : (
+                    <span className="font-medium">{d.invoiceNumber ?? "—"}</span>
+                  )}
+                </td>
+                <td className="table-td text-gray-500">{d.partyName ?? "—"}</td>
+                <td className="table-td text-gray-500">{d.business?.name ?? "—"}</td>
+                <td className="table-td text-right font-semibold">
+                  {formatMoneySafe(d.amount)}
+                </td>
+                <td className="table-td text-gray-500">
+                  {d.refundMethod ? d.refundMethod.toLowerCase() : "ledger credit"}
+                </td>
+                <td className="table-td text-gray-500">{d.requestedByName ?? "—"}</td>
+                <td className="table-td text-gray-500">{formatDate(d.createdAt)}</td>
+                <td className="table-td text-right">
+                  <button
+                    onClick={() => approveReturnDelete(d)}
+                    disabled={busy}
+                    className="mr-3 font-medium text-red-600 hover:underline"
+                  >
+                    Approve Delete
+                  </button>
+                  <button
+                    onClick={() => rejectReturnDelete(d)}
+                    disabled={busy}
+                    className="text-gray-500 hover:underline"
+                  >
+                    Reject
+                  </button>
+                </td>
+              </tr>
+            ))}
+            {returnDeleteReqs.length === 0 && (
+              <tr>
+                <td className="table-td text-gray-400" colSpan={8}>
+                  No pending return deletions. 🎉
                 </td>
               </tr>
             )}
