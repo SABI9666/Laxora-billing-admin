@@ -70,16 +70,23 @@ export default function ApprovalsPage() {
   const [busy, setBusy] = useState(false);
 
   async function load() {
-    const [r, d, rd] = await Promise.all([
+    const [r, d] = await Promise.all([
       api<{ requests: Request[] }>("/api/admin/change-requests?status=PENDING"),
       api<{ requests: DeleteRequest[] }>("/api/admin/delete-requests?status=PENDING"),
-      api<{ requests: ReturnDeleteRequest[] }>(
-        "/api/admin/return-delete-requests?status=PENDING"
-      ),
     ]);
     setRequests(r.requests);
     setDeleteReqs(d.requests);
-    setReturnDeleteReqs(rd.requests);
+    // Return-deletion approvals are a newer endpoint — an older backend won't
+    // have it. Fetch it on its own so a failure here never blanks out the
+    // product-edit and invoice-deletion approvals above.
+    try {
+      const rd = await api<{ requests: ReturnDeleteRequest[] }>(
+        "/api/admin/return-delete-requests?status=PENDING"
+      );
+      setReturnDeleteReqs(rd.requests);
+    } catch {
+      setReturnDeleteReqs([]);
+    }
   }
 
   async function approveReturnDelete(d: ReturnDeleteRequest) {
