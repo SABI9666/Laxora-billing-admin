@@ -90,6 +90,9 @@ type CashBook = {
   openingBank: number;
   cashBalance: number;
   bankBalance: number;
+  // Cash <-> bank transfers in the period (cash deposits / bank withdrawals).
+  depositedToBank: number;
+  withdrawnToCash: number;
   toReceive: number;
   toPay: number;
   days: {
@@ -100,6 +103,8 @@ type CashBook = {
     inBank: number;
     outCash: number;
     outBank: number;
+    toBank: number;
+    toCash: number;
     cashBalance: number;
     bankBalance: number;
   }[];
@@ -1480,11 +1485,31 @@ export default function ReportsPage() {
               <p className="text-sm text-gray-500">💵 Cash balance</p>
               <p className="mt-1 text-2xl font-bold">{formatMoney(cashbook.cashBalance)}</p>
               <p className="text-xs text-gray-400">opening {formatMoney(cashbook.openingCash)}</p>
+              {cashbook.depositedToBank > 0 && (
+                <p className="text-xs text-blue-600">
+                  −{formatMoney(cashbook.depositedToBank)} deposited into the bank
+                </p>
+              )}
+              {cashbook.withdrawnToCash > 0 && (
+                <p className="text-xs text-blue-600">
+                  +{formatMoney(cashbook.withdrawnToCash)} withdrawn from the bank
+                </p>
+              )}
             </div>
             <div className="card">
               <p className="text-sm text-gray-500">🏦 Bank balance</p>
               <p className="mt-1 text-2xl font-bold">{formatMoney(cashbook.bankBalance)}</p>
               <p className="text-xs text-gray-400">opening {formatMoney(cashbook.openingBank)}</p>
+              {cashbook.depositedToBank > 0 && (
+                <p className="text-xs text-blue-600">
+                  +{formatMoney(cashbook.depositedToBank)} from cash deposits
+                </p>
+              )}
+              {cashbook.withdrawnToCash > 0 && (
+                <p className="text-xs text-blue-600">
+                  −{formatMoney(cashbook.withdrawnToCash)} taken out as cash
+                </p>
+              )}
             </div>
             <button
               className="card text-left transition hover:border-brand"
@@ -1518,6 +1543,7 @@ export default function ReportsPage() {
                     <th className="table-th">Date</th>
                     <th className="table-th text-right">Credit (In)</th>
                     <th className="table-th text-right">Debit (Out)</th>
+                    <th className="table-th text-right">Cash ⇄ Bank</th>
                     <th className="table-th text-right">Cash Balance</th>
                     <th className="table-th text-right">Bank Balance</th>
                   </tr>
@@ -1532,13 +1558,24 @@ export default function ReportsPage() {
                       <td className="table-td text-right text-red-600">
                         {d.debit ? `−${formatMoney(d.debit)}` : "—"}
                       </td>
+                      {/* Transfers are not income or spending — they only move
+                          money between the cash drawer and the bank. */}
+                      <td className="table-td text-right text-xs text-blue-600">
+                        {d.toBank > 0 && (
+                          <div>Cash → Bank {formatMoney(d.toBank)}</div>
+                        )}
+                        {d.toCash > 0 && (
+                          <div>Bank → Cash {formatMoney(d.toCash)}</div>
+                        )}
+                        {!d.toBank && !d.toCash && <span className="text-gray-400">—</span>}
+                      </td>
                       <td className="table-td text-right">{formatMoney(d.cashBalance)}</td>
                       <td className="table-td text-right">{formatMoney(d.bankBalance)}</td>
                     </tr>
                   ))}
                   {cashbook.days.length === 0 && (
                     <tr>
-                      <td className="table-td text-gray-400" colSpan={5}>
+                      <td className="table-td text-gray-400" colSpan={6}>
                         No vouchers in this period.
                       </td>
                     </tr>
