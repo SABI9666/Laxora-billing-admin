@@ -200,9 +200,11 @@ type SalesReport = {
 type Pnl = {
   pnl: {
     salesGross: number;
+    grossSales: number;
     amountCollected: number;
     outstanding: number;
     returns: number;
+    returnsNet: number;
     salesNet: number;
     serviceIncome: number;
     cogs: number;
@@ -229,10 +231,13 @@ type Pnl = {
     id: string;
     number: string;
     date: string;
+    status: string;
     revenue: number;
     cogs: number;
     expense: number;
     profit: number;
+    collected: number;
+    outstanding: number;
   }[];
 };
 
@@ -255,6 +260,7 @@ type BillPnl = {
     returns: number;
     cogs: number;
     grossProfit: number;
+    grossMarginPct: number;
     charges: { category: string; amount: number }[];
     chargesTotal: number;
     netProfit: number;
@@ -644,12 +650,18 @@ export default function ReportsPage() {
           {/* Headline profit KPIs */}
           <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
             <div className="card">
-              <p className="text-sm text-gray-500">Collected (net of tax)</p>
+              <p className="text-sm text-gray-500">Net Sales (ex-GST)</p>
               <p className="mt-1 text-2xl font-bold">{formatMoney(pnl.pnl.salesNet)}</p>
+              <p className="mt-0.5 text-xs text-gray-400">
+                Collected {formatMoney(pnl.pnl.amountCollected)}
+              </p>
             </div>
             <div className="card">
-              <p className="text-sm text-gray-500">Cost of goods</p>
+              <p className="text-sm text-gray-500">Cost of goods sold</p>
               <p className="mt-1 text-2xl font-bold">{formatMoney(pnl.pnl.cogs)}</p>
+              <p className="mt-0.5 text-xs text-gray-400">
+                Gross margin {pnl.pnl.grossMarginPct}%
+              </p>
             </div>
             <div className="card">
               <p className="text-sm text-gray-500">Expenses / charges</p>
@@ -658,13 +670,18 @@ export default function ReportsPage() {
               </p>
             </div>
             <div className="card">
-              <p className="text-sm text-gray-500">Net Profit</p>
+              <p className="text-sm text-gray-500">
+                {pnl.pnl.netProfit >= 0 ? "Net Profit" : "Net Loss"}
+              </p>
               <p
                 className={`mt-1 text-2xl font-bold ${
                   pnl.pnl.netProfit >= 0 ? "text-green-700" : "text-red-600"
                 }`}
               >
                 {formatMoney(pnl.pnl.netProfit)}
+              </p>
+              <p className="mt-0.5 text-xs text-gray-400">
+                Net margin {pnl.pnl.netMarginPct}%
               </p>
             </div>
           </div>
@@ -689,10 +706,11 @@ export default function ReportsPage() {
                   <thead className="sticky top-0 bg-gray-50">
                     <tr>
                       <th className="table-th">Bill</th>
-                      <th className="table-th text-right">Revenue</th>
+                      <th className="table-th text-right">Net Sale</th>
                       <th className="table-th text-right">Cost</th>
                       <th className="table-th text-right">Charges</th>
                       <th className="table-th text-right">Profit</th>
+                      <th className="table-th text-right">Due</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
@@ -713,11 +731,18 @@ export default function ReportsPage() {
                         >
                           {formatMoney(b.profit)}
                         </td>
+                        <td
+                          className={`table-td text-right ${
+                            b.outstanding > 0 ? "font-medium text-amber-600" : "text-gray-400"
+                          }`}
+                        >
+                          {b.outstanding > 0 ? formatMoney(b.outstanding) : "—"}
+                        </td>
                       </tr>
                     ))}
                     {pnl.bills.length === 0 && (
                       <tr>
-                        <td className="table-td text-gray-400" colSpan={5}>
+                        <td className="table-td text-gray-400" colSpan={6}>
                           No sales bills in this period.
                         </td>
                       </tr>
@@ -732,7 +757,8 @@ export default function ReportsPage() {
               <div>
                 <div className="font-semibold">P&amp;L Statement</div>
                 <p className="text-xs text-gray-400">
-                  Cash basis — based on what you actually collected.
+                  Accrual basis — profit is earned when a bill is raised. GST is excluded
+                  (it belongs to the government); collections are tracked below.
                 </p>
               </div>
 
@@ -740,9 +766,11 @@ export default function ReportsPage() {
                 <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-400">
                   Income
                 </p>
-                <Line label="Amount collected" value={formatMoney(pnl.pnl.amountCollected)} />
-                <Line label="GST collected" value={`- ${formatMoney(pnl.pnl.taxCollected)}`} />
-                <Line label="Returns" value={`- ${formatMoney(pnl.pnl.returns)}`} />
+                <Line label="Gross sales (ex-GST)" value={formatMoney(pnl.pnl.grossSales)} />
+                <Line
+                  label="Sales returns (credit notes)"
+                  value={`- ${formatMoney(pnl.pnl.returnsNet)}`}
+                />
                 <div className="mt-1 flex items-center justify-between border-t pt-2 text-sm font-semibold">
                   <span>Net Sales</span>
                   <span>{formatMoney(pnl.pnl.salesNet)}</span>
@@ -767,12 +795,13 @@ export default function ReportsPage() {
                   bold
                   valueClass={pnl.pnl.grossProfit >= 0 ? "text-green-700" : "text-red-600"}
                 />
+                <Line label="Gross Margin" value={`${pnl.pnl.grossMarginPct}%`} />
                 <Line label="Expenses / charges" value={`- ${formatMoney(pnl.pnl.expenses)}`} />
               </section>
 
               <section>
                 <div className="flex items-center justify-between border-t pt-3 text-lg font-bold">
-                  <span>Net Profit</span>
+                  <span>{pnl.pnl.netProfit >= 0 ? "Net Profit" : "Net Loss"}</span>
                   <span className={pnl.pnl.netProfit >= 0 ? "text-green-700" : "text-red-600"}>
                     {formatMoney(pnl.pnl.netProfit)}
                   </span>
@@ -782,10 +811,17 @@ export default function ReportsPage() {
 
               <section className="border-t pt-3">
                 <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-400">
-                  For reference
+                  Collections &amp; reference
                 </p>
-                <Line label="Total billed" value={formatMoney(pnl.pnl.salesGross)} />
-                <Line label="Outstanding (to collect)" value={formatMoney(pnl.pnl.outstanding)} />
+                <Line label="Total billed (incl GST)" value={formatMoney(pnl.pnl.salesGross)} />
+                <Line label="GST billed (payable)" value={formatMoney(pnl.pnl.taxCollected)} />
+                <Line label="Cash collected" value={formatMoney(pnl.pnl.amountCollected)} />
+                <Line label="Returns (incl GST)" value={formatMoney(pnl.pnl.returns)} />
+                <Line
+                  label="Outstanding (to collect)"
+                  value={formatMoney(pnl.pnl.outstanding)}
+                  valueClass={pnl.pnl.outstanding > 0 ? "text-amber-600 font-semibold" : ""}
+                />
                 <Line label="Total purchases" value={formatMoney(pnl.pnl.purchases)} />
                 <Line
                   label="Sales / Purchase bills"
@@ -1791,7 +1827,11 @@ export default function ReportsPage() {
                   label="Gross Profit"
                   value={formatMoney(billPnl.statement.grossProfit)}
                   bold
+                  valueClass={
+                    billPnl.statement.grossProfit >= 0 ? "text-green-700" : "text-red-600"
+                  }
                 />
+                <Line label="Gross Margin" value={`${billPnl.statement.grossMarginPct ?? 0}%`} />
                 {billPnl.statement.charges.map((c) => (
                   <Line key={c.category} label={c.category} value={`- ${formatMoney(c.amount)}`} />
                 ))}
