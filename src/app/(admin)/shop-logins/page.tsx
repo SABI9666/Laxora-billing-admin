@@ -11,6 +11,8 @@ type Login = {
   username?: string | null;
   email: string;
   role: string;
+  // Total shops this login can access (1 = only this shop).
+  shopCount?: number;
 };
 
 export default function ShopLoginsPage() {
@@ -18,6 +20,7 @@ export default function ShopLoginsPage() {
   const [shopId, setShopId] = useState("");
   const [logins, setLogins] = useState<Login[]>([]);
   const [form, setForm] = useState({ name: "", username: "", password: "" });
+  const [attachUsername, setAttachUsername] = useState("");
   const [shopForm, setShopForm] = useState({ name: "", code: "" });
   const [showShopForm, setShowShopForm] = useState(false);
   const [error, setError] = useState("");
@@ -86,9 +89,35 @@ export default function ShopLoginsPage() {
     }
   }
 
+  // Give an EXISTING login (e.g. laxoraperavoor) access to the selected shop
+  // too — same staff, same password, and they switch shops inside the app.
+  async function attachLogin(e: React.FormEvent) {
+    e.preventDefault();
+    setError("");
+    setOk("");
+    try {
+      const uname = attachUsername.toLowerCase().trim();
+      await api(`/api/admin/businesses/${shopId}/logins/attach`, {
+        method: "POST",
+        body: { username: uname },
+      });
+      setOk(
+        `"${uname}" can now access ${shopName} too. After signing in, the staff pick the shop (or switch from the sidebar).`
+      );
+      setAttachUsername("");
+      await loadLogins();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Failed to attach login");
+    }
+  }
+
   async function remove(l: Login) {
-    if (!confirm(`Delete login "${l.username || l.email}"?`)) return;
-    await api(`/api/admin/logins/${l.userId}`, { method: "DELETE" });
+    const shared = (l.shopCount ?? 1) > 1;
+    const msg = shared
+      ? `Remove "${l.username || l.email}" from ${shopName}? The login stays active for its other shops.`
+      : `Remove "${l.username || l.email}"? This is its only shop, so the login will be deleted.`;
+    if (!confirm(msg)) return;
+    await api(`/api/admin/businesses/${shopId}/logins/${l.userId}`, { method: "DELETE" });
     await loadLogins();
   }
 
@@ -136,9 +165,11 @@ export default function ShopLoginsPage() {
       />
 
       <p className="mb-4 text-sm text-gray-500">
-        Create <b>one login per shop</b>. Each login manages only its own shop (POS,
-        stock, invoices) and cannot see other shops. The shop signs in on the shop app
-        with its <b>username</b> (e.g. <code>laxoraperavoor</code>) and password.
+        Create a <b>login per shop</b>, or share <b>one login across several shops</b> when
+        the same staff run them (e.g. give <code>laxoraperavoor</code> access to Laxora
+        Decorative too). A shared login picks the shop after signing in and can switch
+        shops from the sidebar; each shop&apos;s billing, stock and reports stay fully
+        separate.
       </p>
 
       {error && (
@@ -256,6 +287,33 @@ export default function ShopLoginsPage() {
                   Create Login
                 </button>
               </form>
+
+              <div className="my-5 flex items-center gap-3 text-xs text-gray-400">
+                <div className="h-px flex-1 bg-gray-200" />
+                or
+                <div className="h-px flex-1 bg-gray-200" />
+              </div>
+
+              <h2 className="mb-2 font-semibold">Give an existing login access</h2>
+              <p className="mb-3 text-xs text-gray-500">
+                Same staff running this shop too? Enter their current username — they keep
+                one login and switch shops inside the app.
+              </p>
+              <form onSubmit={attachLogin} className="flex items-end gap-3">
+                <div className="flex-1">
+                  <label className="label">Existing username</label>
+                  <input
+                    className="input"
+                    placeholder="e.g. laxoraperavoor"
+                    value={attachUsername}
+                    onChange={(e) => setAttachUsername(e.target.value)}
+                    required
+                  />
+                </div>
+                <button className="btn-secondary" type="submit">
+                  Add to {shopName || "shop"}
+                </button>
+              </form>
             </div>
 
             {/* Existing logins */}
@@ -273,7 +331,17 @@ export default function ShopLoginsPage() {
                 <tbody className="divide-y divide-gray-100">
                   {logins.map((l) => (
                     <tr key={l.userId}>
-                      <td className="table-td font-medium">{l.username || l.email}</td>
+                      <td className="table-td font-medium">
+                        {l.username || l.email}
+                        {(l.shopCount ?? 1) > 1 && (
+                          <span
+                            className="ml-2 rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-medium text-blue-600"
+                            title={`This login can access ${l.shopCount} shops`}
+                          >
+                            {l.shopCount} shops
+                          </span>
+                        )}
+                      </td>
                       <td className="table-td">{l.name}</td>
                       <td className="table-td">{l.role}</td>
                       <td className="table-td text-right">
@@ -284,7 +352,7 @@ export default function ShopLoginsPage() {
                           Reset PW
                         </button>
                         <button onClick={() => remove(l)} className="text-red-600 hover:underline">
-                          Delete
+                          Remove
                         </button>
                       </td>
                     </tr>
