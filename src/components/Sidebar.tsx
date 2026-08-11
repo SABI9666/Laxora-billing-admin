@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { api, clearSession } from "@/lib/api";
+import AdminShopSwitcher from "@/components/AdminShopSwitcher";
 
 const nav = [
   { href: "/overview", label: "Overview", icon: "📈" },
@@ -46,6 +47,8 @@ export default function Sidebar() {
           </span>
         </div>
       </div>
+
+      <AdminShopSwitcher />
 
       <p className="px-5 pb-1 pt-1 text-[10px] font-bold uppercase tracking-widest text-slate-400">
         Menu
