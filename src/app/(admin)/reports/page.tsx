@@ -1577,49 +1577,105 @@ export default function ReportsPage() {
             </button>
           </div>
 
-          {/* Daily credit / debit with running balances */}
+          {/* Professional double-column day book: cash and bank tracked
+              side by side, with opening row, daily splits, and closing totals.
+              A UPI/card receipt raises the BANK column, not the cash drawer —
+              showing the split makes each day's movement self-explanatory. */}
           <div className="card mb-6 p-0">
-            <div className="border-b px-5 py-3 font-semibold">Daily Cash Book</div>
+            <div className="border-b px-5 py-3 font-semibold">
+              Daily Cash Book{" "}
+              <span className="text-xs font-normal text-gray-400">
+                Cash = notes in the shop drawer · Bank = UPI, card, cheque &amp; transfers
+              </span>
+            </div>
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead className="bg-gray-50">
                   <tr>
                     <th className="table-th">Date</th>
-                    <th className="table-th text-right">Credit (In)</th>
-                    <th className="table-th text-right">Debit (Out)</th>
-                    <th className="table-th text-right">Cash ⇄ Bank</th>
+                    <th className="table-th text-right">Cash In</th>
+                    <th className="table-th text-right">Cash Out</th>
                     <th className="table-th text-right">Cash Balance</th>
+                    <th className="table-th text-right">Bank In</th>
+                    <th className="table-th text-right">Bank Out</th>
                     <th className="table-th text-right">Bank Balance</th>
+                    <th className="table-th text-right">Cash ⇄ Bank</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
+                  <tr className="bg-gray-50/60">
+                    <td className="table-td font-semibold text-gray-500">Opening balance</td>
+                    <td className="table-td" colSpan={2} />
+                    <td className="table-td text-right font-semibold">
+                      {formatMoney(cashbook.openingCash)}
+                    </td>
+                    <td className="table-td" colSpan={2} />
+                    <td className="table-td text-right font-semibold">
+                      {formatMoney(cashbook.openingBank)}
+                    </td>
+                    <td className="table-td" />
+                  </tr>
                   {cashbook.days.map((d) => (
                     <tr key={d.day}>
                       <td className="table-td font-medium">{d.day}</td>
                       <td className="table-td text-right text-green-700">
-                        {d.credit ? `+${formatMoney(d.credit)}` : "—"}
+                        {d.inCash ? `+${formatMoney(d.inCash)}` : "—"}
                       </td>
                       <td className="table-td text-right text-red-600">
-                        {d.debit ? `−${formatMoney(d.debit)}` : "—"}
+                        {d.outCash ? `−${formatMoney(d.outCash)}` : "—"}
+                      </td>
+                      <td className="table-td text-right font-medium">
+                        {formatMoney(d.cashBalance)}
+                      </td>
+                      <td className="table-td text-right text-green-700">
+                        {d.inBank ? `+${formatMoney(d.inBank)}` : "—"}
+                      </td>
+                      <td className="table-td text-right text-red-600">
+                        {d.outBank ? `−${formatMoney(d.outBank)}` : "—"}
+                      </td>
+                      <td className="table-td text-right font-medium">
+                        {formatMoney(d.bankBalance)}
                       </td>
                       {/* Transfers are not income or spending — they only move
                           money between the cash drawer and the bank. */}
                       <td className="table-td text-right text-xs text-blue-600">
-                        {d.toBank > 0 && (
-                          <div>Cash → Bank {formatMoney(d.toBank)}</div>
-                        )}
-                        {d.toCash > 0 && (
-                          <div>Bank → Cash {formatMoney(d.toCash)}</div>
-                        )}
+                        {d.toBank > 0 && <div>→ Bank {formatMoney(d.toBank)}</div>}
+                        {d.toCash > 0 && <div>→ Cash {formatMoney(d.toCash)}</div>}
                         {!d.toBank && !d.toCash && <span className="text-gray-400">—</span>}
                       </td>
-                      <td className="table-td text-right">{formatMoney(d.cashBalance)}</td>
-                      <td className="table-td text-right">{formatMoney(d.bankBalance)}</td>
                     </tr>
                   ))}
+                  {cashbook.days.length > 0 && (
+                    <tr className="bg-gray-50 font-semibold">
+                      <td className="table-td">Total / Closing</td>
+                      <td className="table-td text-right text-green-700">
+                        +{formatMoney(cashbook.days.reduce((s, d) => s + d.inCash, 0))}
+                      </td>
+                      <td className="table-td text-right text-red-600">
+                        −{formatMoney(cashbook.days.reduce((s, d) => s + d.outCash, 0))}
+                      </td>
+                      <td className="table-td text-right">{formatMoney(cashbook.cashBalance)}</td>
+                      <td className="table-td text-right text-green-700">
+                        +{formatMoney(cashbook.days.reduce((s, d) => s + d.inBank, 0))}
+                      </td>
+                      <td className="table-td text-right text-red-600">
+                        −{formatMoney(cashbook.days.reduce((s, d) => s + d.outBank, 0))}
+                      </td>
+                      <td className="table-td text-right">{formatMoney(cashbook.bankBalance)}</td>
+                      <td className="table-td text-right text-xs text-blue-600">
+                        {cashbook.depositedToBank > 0 && (
+                          <div>→ Bank {formatMoney(cashbook.depositedToBank)}</div>
+                        )}
+                        {cashbook.withdrawnToCash > 0 && (
+                          <div>→ Cash {formatMoney(cashbook.withdrawnToCash)}</div>
+                        )}
+                        {!cashbook.depositedToBank && !cashbook.withdrawnToCash && "—"}
+                      </td>
+                    </tr>
+                  )}
                   {cashbook.days.length === 0 && (
                     <tr>
-                      <td className="table-td text-gray-400" colSpan={6}>
+                      <td className="table-td text-gray-400" colSpan={8}>
                         No vouchers in this period.
                       </td>
                     </tr>
