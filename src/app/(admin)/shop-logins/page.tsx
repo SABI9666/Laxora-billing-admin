@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { api, ApiError } from "@/lib/api";
+import { getAdminShopId, setAdminShopId, onAdminShopChange } from "@/lib/adminShop";
 import PageHeader from "@/components/PageHeader";
 
 type Shop = { id: string; name: string; code?: string | null };
@@ -32,13 +33,17 @@ export default function ShopLoginsPage() {
     try {
       const r = await api<{ businesses: Shop[] }>("/api/admin/businesses");
       setShops(r.businesses);
-      setShopId((cur) => cur || r.businesses[0]?.id || "");
+      // Follow the sidebar's globally selected shop; fall back to the first.
+      const stored = getAdminShopId();
+      const initial = r.businesses.find((b) => b.id === stored)?.id ?? r.businesses[0]?.id;
+      setShopId((cur) => cur || initial || "");
     } finally {
       setLoading(false);
     }
   }
   useEffect(() => {
     loadShops();
+    return onAdminShopChange(setShopId);
   }, []);
 
   async function loadLogins() {
@@ -66,6 +71,7 @@ export default function ShopLoginsPage() {
       setShowShopForm(false);
       await loadShops();
       setShopId(r.business.id);
+      setAdminShopId(r.business.id);
       setOk(`Shop "${r.business.name}" created. Now add its login below.`);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Failed to create shop");
@@ -147,7 +153,10 @@ export default function ShopLoginsPage() {
               <select
                 className="input w-56"
                 value={shopId}
-                onChange={(e) => setShopId(e.target.value)}
+                onChange={(e) => {
+                  setShopId(e.target.value);
+                  setAdminShopId(e.target.value);
+                }}
               >
                 {shops.map((s) => (
                   <option key={s.id} value={s.id}>

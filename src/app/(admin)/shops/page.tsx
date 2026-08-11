@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { api } from "@/lib/api";
+import { getAdminShopId, setAdminShopId, onAdminShopChange } from "@/lib/adminShop";
 import { formatMoney } from "@/lib/format";
 import PageHeader from "@/components/PageHeader";
 
@@ -66,8 +67,12 @@ export default function ShopsPage() {
   useEffect(() => {
     api<{ businesses: Shop[] }>("/api/admin/businesses").then((r) => {
       setShops(r.businesses);
-      if (r.businesses[0]) setSelected(r.businesses[0].id);
+      // Follow the sidebar's globally selected shop; fall back to the first.
+      const stored = getAdminShopId();
+      const initial = r.businesses.find((b) => b.id === stored)?.id ?? r.businesses[0]?.id;
+      if (initial) setSelected(initial);
     });
+    return onAdminShopChange(setSelected);
   }, []);
 
   useEffect(() => {
@@ -86,7 +91,10 @@ export default function ShopsPage() {
           <select
             className="input w-64"
             value={selected}
-            onChange={(e) => setSelected(e.target.value)}
+            onChange={(e) => {
+              setSelected(e.target.value);
+              setAdminShopId(e.target.value);
+            }}
           >
             {shops.map((s) => (
               <option key={s.id} value={s.id}>
