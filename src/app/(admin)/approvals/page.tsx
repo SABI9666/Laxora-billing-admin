@@ -82,12 +82,21 @@ export default function ApprovalsPage() {
     setReturnDeleteReqs(rd.requests);
   }
 
+  // Returns recorded as an exchange carry "Exchange" in their reason — undoing
+  // one also strips the replacement goods off the bill, so flag it clearly.
+  const isExchange = (d: ReturnDeleteRequest) =>
+    (d.reason ?? "").trim().toLowerCase().startsWith("exchange");
+
   async function approveReturnDelete(d: ReturnDeleteRequest) {
     if (
       !confirm(
         `Approve deletion of this return (${formatMoneySafe(d.amount)}) on ${
           d.invoiceNumber ?? "the bill"
-        }? The items go back to sold, the stock it added is removed, and any cash refund is reversed.`
+        }? The items go back to sold, the stock it added is removed, and any cash refund is reversed.${
+          isExchange(d)
+            ? "\n\nThis was an EXCHANGE: the replacement goods also come off the bill, their stock goes back, and the extra amount collected is undone."
+            : ""
+        }`
       )
     )
       return;
@@ -299,8 +308,9 @@ export default function ApprovalsPage() {
       <h2 className="mb-2 mt-8 text-lg font-bold text-slate-800">Return Deletions</h2>
       <p className="mb-4 text-sm text-gray-500">
         Wrong returns a shop wants to undo. <b>Approve</b> puts the items back as sold,
-        removes the stock the return added, and reverses any cash refund; <b>Reject</b> keeps
-        the return.
+        removes the stock the return added, and reverses any cash refund — for an exchange it
+        also takes the replacement goods off the bill, puts their stock back and undoes the
+        extra amount collected; <b>Reject</b> keeps the return.
       </p>
       <div className="card p-0">
         <table className="w-full">
@@ -311,6 +321,7 @@ export default function ApprovalsPage() {
               <th className="table-th">Shop</th>
               <th className="table-th text-right">Return amount</th>
               <th className="table-th">Refund</th>
+              <th className="table-th">Reason</th>
               <th className="table-th">Requested by</th>
               <th className="table-th">When</th>
               <th className="table-th"></th>
@@ -340,6 +351,14 @@ export default function ApprovalsPage() {
                 <td className="table-td text-gray-500">
                   {d.refundMethod ? d.refundMethod.toLowerCase() : "ledger credit"}
                 </td>
+                <td className="table-td text-gray-500">
+                  {isExchange(d) && (
+                    <span className="mr-1.5 rounded bg-indigo-100 px-1.5 py-0.5 text-[11px] font-semibold text-brand">
+                      🔄 exchange
+                    </span>
+                  )}
+                  {d.reason || "—"}
+                </td>
                 <td className="table-td text-gray-500">{d.requestedByName ?? "—"}</td>
                 <td className="table-td text-gray-500">{formatDate(d.createdAt)}</td>
                 <td className="table-td text-right">
@@ -362,7 +381,7 @@ export default function ApprovalsPage() {
             ))}
             {returnDeleteReqs.length === 0 && (
               <tr>
-                <td className="table-td text-gray-400" colSpan={8}>
+                <td className="table-td text-gray-400" colSpan={9}>
                   No pending return deletions. 🎉
                 </td>
               </tr>
