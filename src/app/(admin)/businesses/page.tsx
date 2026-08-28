@@ -12,7 +12,9 @@ type Business = {
   createdAt: string;
   owner: { name: string; email: string };
   franchise?: { id: string; name: string } | null;
-  _count: { invoices: number; parties: number; items: number };
+  // memberships = logins that can open this shop. Zero means nobody can
+  // select it in the shop app, however healthy it looks here.
+  _count: { invoices: number; parties: number; items: number; memberships: number };
 };
 
 export default function BusinessesPage() {
@@ -53,6 +55,7 @@ export default function BusinessesPage() {
                 <th className="table-th">Shop</th>
                 <th className="table-th">Franchise</th>
                 <th className="table-th">Owner</th>
+                <th className="table-th text-right">Logins</th>
                 <th className="table-th">GSTIN</th>
                 <th className="table-th text-right">Invoices</th>
                 <th className="table-th text-right">Parties</th>
@@ -76,6 +79,18 @@ export default function BusinessesPage() {
                     <div>{b.owner?.name}</div>
                     <div className="text-xs text-gray-400">{b.owner?.email}</div>
                   </td>
+                  <td className="table-td text-right">
+                    {b._count.memberships > 0 ? (
+                      b._count.memberships
+                    ) : (
+                      <span
+                        className="rounded bg-amber-100 px-1.5 py-0.5 text-[11px] font-semibold text-amber-800"
+                        title="No login can open this shop, so it never shows in the shop switcher. Attach one in Shop Logins."
+                      >
+                        ⚠ none
+                      </span>
+                    )}
+                  </td>
                   <td className="table-td">{b.gstin || "—"}</td>
                   <td className="table-td text-right">{b._count.invoices}</td>
                   <td className="table-td text-right">{b._count.parties}</td>
@@ -93,7 +108,7 @@ export default function BusinessesPage() {
               ))}
               {businesses.length === 0 && (
                 <tr>
-                  <td className="table-td text-gray-400" colSpan={9}>
+                  <td className="table-td text-gray-400" colSpan={10}>
                     No businesses found.
                   </td>
                 </tr>
