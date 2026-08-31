@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { api, ApiError } from "@/lib/api";
+import { getAdminShopId, onAdminShopChange } from "@/lib/adminShop";
 import { formatDate } from "@/lib/format";
 import PageHeader from "@/components/PageHeader";
 
@@ -68,19 +69,40 @@ export default function ApprovalsPage() {
   const [returnDeleteReqs, setReturnDeleteReqs] = useState<ReturnDeleteRequest[]>([]);
   const [detail, setDetail] = useState<Detail | null>(null);
   const [busy, setBusy] = useState(false);
+  // Approvals follow the sidebar's selected shop — only that shop's pending
+  // requests are shown, so each shop's queue stays separate.
+  const [shopId, setShopId] = useState<string | null>(null);
+  const [shopName, setShopName] = useState("");
+
+  useEffect(() => {
+    setShopId(getAdminShopId());
+    return onAdminShopChange(setShopId);
+  }, []);
 
   async function load() {
+    const scope = shopId ? `&businessId=${shopId}` : "";
     const [r, d, rd] = await Promise.all([
-      api<{ requests: Request[] }>("/api/admin/change-requests?status=PENDING"),
-      api<{ requests: DeleteRequest[] }>("/api/admin/delete-requests?status=PENDING"),
+      api<{ requests: Request[] }>(`/api/admin/change-requests?status=PENDING${scope}`),
+      api<{ requests: DeleteRequest[] }>(`/api/admin/delete-requests?status=PENDING${scope}`),
       api<{ requests: ReturnDeleteRequest[] }>(
-        "/api/admin/return-delete-requests?status=PENDING"
+        `/api/admin/return-delete-requests?status=PENDING${scope}`
       ),
     ]);
     setRequests(r.requests);
     setDeleteReqs(d.requests);
     setReturnDeleteReqs(rd.requests);
   }
+
+  // The selected shop's name for the page title.
+  useEffect(() => {
+    if (!shopId) {
+      setShopName("");
+      return;
+    }
+    api<{ businesses: Array<{ id: string; name: string }> }>("/api/admin/businesses")
+      .then((r) => setShopName(r.businesses.find((b) => b.id === shopId)?.name ?? ""))
+      .catch(() => setShopName(""));
+  }, [shopId]);
 
   // Returns recorded as an exchange carry "Exchange" in their reason — undoing
   // one also strips the replacement goods off the bill, so flag it clearly.
@@ -149,7 +171,8 @@ export default function ApprovalsPage() {
   }
   useEffect(() => {
     load();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shopId]);
 
   async function open(id: string) {
     setDetail(await api<Detail>(`/api/admin/change-requests/${id}`));
@@ -195,9 +218,17 @@ export default function ApprovalsPage() {
 
   return (
     <div>
-      <PageHeader title="Product Edit Approvals" />
+      <PageHeader
+        title={shopName ? `Approvals — ${shopName}` : "Product Edit Approvals"}
+      />
       <p className="mb-4 text-sm text-gray-500">
-        Shops can't change a product directly — their edits wait here. Review and{" "}
+        {shopName ? (
+          <>
+            Showing pending requests for <b>{shopName}</b> only — switch the shop in
+            the sidebar to review another shop&apos;s queue.{" "}
+          </>
+        ) : null}
+        Shops can&apos;t change a product directly — their edits wait here. Review and{" "}
         <b>approve</b> to apply, or <b>reject</b> to discard.
       </p>
 

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { api, clearSession } from "@/lib/api";
+import { getAdminShopId, onAdminShopChange } from "@/lib/adminShop";
 import AdminShopSwitcher from "@/components/AdminShopSwitcher";
 
 const nav = [
@@ -20,12 +21,21 @@ export default function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const [pending, setPending] = useState(0);
+  const [shopId, setShopId] = useState<string | null>(null);
 
   useEffect(() => {
-    api<{ pendingCount: number }>("/api/admin/change-requests?status=PENDING")
+    setShopId(getAdminShopId());
+    return onAdminShopChange(setShopId);
+  }, []);
+
+  // Badge counts only the selected shop's pending requests, matching the
+  // (shop-scoped) Approvals page.
+  useEffect(() => {
+    const scope = shopId ? `&businessId=${shopId}` : "";
+    api<{ pendingCount: number }>(`/api/admin/change-requests?status=PENDING${scope}`)
       .then((r) => setPending(r.pendingCount))
       .catch(() => {});
-  }, [pathname]);
+  }, [pathname, shopId]);
 
   function logout() {
     clearSession();
