@@ -20,6 +20,37 @@ type Business = {
 export default function BusinessesPage() {
   const [businesses, setBusinesses] = useState<Business[]>([]);
   const [search, setSearch] = useState("");
+  const [reconciling, setReconciling] = useState(false);
+
+  // Spreads receipts that were saved without a bill across each party's open
+  // bills, so the ledger and the pending list agree. The API runs the same
+  // pass on every start; this is for doing it right now.
+  async function reconcilePayments() {
+    if (
+      !confirm(
+        "Allocate every receipt / supplier payment that has no bill to that party's " +
+          "pending bills (oldest first)? Bills the money covers become Paid / Partial. " +
+          "Safe to run again."
+      )
+    )
+      return;
+    setReconciling(true);
+    try {
+      const r = await api<{ allocated: number; rechecked: number }>(
+        "/api/admin/reconcile-payments",
+        { method: "POST" }
+      );
+      alert(
+        r.allocated > 0
+          ? `${r.allocated} voucher(s) allocated to bills; ${r.rechecked} partial bill(s) rechecked.`
+          : `Nothing to allocate — every receipt is already on a bill. ${r.rechecked} partial bill(s) rechecked.`
+      );
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Reconcile failed");
+    } finally {
+      setReconciling(false);
+    }
+  }
 
   async function load() {
     const q = search ? `?search=${encodeURIComponent(search)}` : "";
@@ -40,7 +71,19 @@ export default function BusinessesPage() {
 
   return (
     <div>
-      <PageHeader title="Businesses" />
+      <PageHeader
+        title="Businesses"
+        action={
+          <button
+            onClick={reconcilePayments}
+            disabled={reconciling}
+            className="btn-secondary"
+            title="Allocate receipts saved without a bill to the party's pending bills"
+          >
+            {reconciling ? "Reconciling…" : "Reconcile payments"}
+          </button>
+        }
+      />
       <input
         className="input mb-4 max-w-sm"
         placeholder="Search businesses…"
