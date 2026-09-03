@@ -6,6 +6,7 @@ import { getAdminShopId, setAdminShopId, onAdminShopChange } from "@/lib/adminSh
 import PageHeader from "@/components/PageHeader";
 
 type Shop = { id: string; name: string; code?: string | null };
+type Franchise = { id: string; name: string };
 type Login = {
   userId: string;
   name: string;
@@ -22,8 +23,9 @@ export default function ShopLoginsPage() {
   const [logins, setLogins] = useState<Login[]>([]);
   const [form, setForm] = useState({ name: "", username: "", password: "" });
   const [attachUsername, setAttachUsername] = useState("");
-  const [shopForm, setShopForm] = useState({ name: "", code: "" });
+  const [shopForm, setShopForm] = useState({ name: "", code: "", franchiseId: "" });
   const [showShopForm, setShowShopForm] = useState(false);
+  const [franchises, setFranchises] = useState<Franchise[]>([]);
   const [error, setError] = useState("");
   const [ok, setOk] = useState("");
   const [loading, setLoading] = useState(true);
@@ -43,6 +45,11 @@ export default function ShopLoginsPage() {
   }
   useEffect(() => {
     loadShops();
+    // Franchises for the "Add a new shop" form — attaching the shop to a
+    // franchise makes it visible as an external transfer target.
+    api<{ franchises: Franchise[] }>("/api/admin/franchises")
+      .then((r) => setFranchises(r.franchises))
+      .catch(() => setFranchises([]));
     return onAdminShopChange(setShopId);
   }, []);
 
@@ -65,9 +72,13 @@ export default function ShopLoginsPage() {
     try {
       const r = await api<{ business: Shop }>("/api/admin/businesses", {
         method: "POST",
-        body: { name: shopForm.name.trim(), code: shopForm.code.trim() || undefined },
+        body: {
+          name: shopForm.name.trim(),
+          code: shopForm.code.trim() || undefined,
+          franchiseId: shopForm.franchiseId || undefined,
+        },
       });
-      setShopForm({ name: "", code: "" });
+      setShopForm({ name: "", code: "", franchiseId: "" });
       setShowShopForm(false);
       await loadShops();
       setShopId(r.business.id);
@@ -219,6 +230,25 @@ export default function ShopLoginsPage() {
                 onChange={(e) => setShopForm({ ...shopForm, code: e.target.value })}
               />
             </div>
+            {franchises.length > 0 && (
+              <div>
+                <label className="label">Franchise (for external transfers)</label>
+                <select
+                  className="input"
+                  value={shopForm.franchiseId}
+                  onChange={(e) =>
+                    setShopForm({ ...shopForm, franchiseId: e.target.value })
+                  }
+                >
+                  <option value="">Standalone (no franchise)</option>
+                  {franchises.map((f) => (
+                    <option key={f.id} value={f.id}>
+                      {f.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
             <button className="btn-primary w-full" type="submit">
               Create Shop
             </button>
@@ -249,6 +279,25 @@ export default function ShopLoginsPage() {
                     onChange={(e) => setShopForm({ ...shopForm, code: e.target.value })}
                   />
                 </div>
+                {franchises.length > 0 && (
+                  <div className="w-64">
+                    <label className="label">Franchise (for external transfers)</label>
+                    <select
+                      className="input"
+                      value={shopForm.franchiseId}
+                      onChange={(e) =>
+                        setShopForm({ ...shopForm, franchiseId: e.target.value })
+                      }
+                    >
+                      <option value="">Standalone (no franchise)</option>
+                      {franchises.map((f) => (
+                        <option key={f.id} value={f.id}>
+                          {f.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
                 <button className="btn-primary" type="submit">
                   Create Shop
                 </button>

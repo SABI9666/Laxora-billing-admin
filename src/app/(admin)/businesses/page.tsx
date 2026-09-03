@@ -16,9 +16,11 @@ type Business = {
   // select it in the shop app, however healthy it looks here.
   _count: { invoices: number; parties: number; items: number; memberships: number };
 };
+type Franchise = { id: string; name: string };
 
 export default function BusinessesPage() {
   const [businesses, setBusinesses] = useState<Business[]>([]);
+  const [franchises, setFranchises] = useState<Franchise[]>([]);
   const [search, setSearch] = useState("");
   const [reconciling, setReconciling] = useState(false);
 
@@ -61,6 +63,22 @@ export default function BusinessesPage() {
     const t = setTimeout(load, 250);
     return () => clearTimeout(t);
   }, [search]);
+  useEffect(() => {
+    api<{ franchises: Franchise[] }>("/api/admin/franchises")
+      .then((r) => setFranchises(r.franchises))
+      .catch(() => setFranchises([]));
+  }, []);
+
+  // Attach/detach a shop to a franchise. External stock transfers only list
+  // shops of the SAME franchise, so a standalone shop never shows up as a
+  // destination until it is attached here.
+  async function setFranchise(b: Business, franchiseId: string) {
+    await api(`/api/admin/businesses/${b.id}/franchise`, {
+      method: "PATCH",
+      body: { franchiseId: franchiseId || null },
+    });
+    await load();
+  }
 
   async function remove(b: Business) {
     if (!confirm(`Delete "${b.name}" and ALL its data? This cannot be undone.`))
@@ -112,7 +130,20 @@ export default function BusinessesPage() {
                 <tr key={b.id}>
                   <td className="table-td font-medium">{b.name}</td>
                   <td className="table-td">
-                    {b.franchise ? (
+                    {franchises.length > 0 ? (
+                      <select
+                        className="input w-44 py-1 text-sm"
+                        value={b.franchise?.id ?? ""}
+                        onChange={(e) => setFranchise(b, e.target.value)}
+                      >
+                        <option value="">Standalone</option>
+                        {franchises.map((f) => (
+                          <option key={f.id} value={f.id}>
+                            {f.name}
+                          </option>
+                        ))}
+                      </select>
+                    ) : b.franchise ? (
                       b.franchise.name
                     ) : (
                       <span className="text-xs text-gray-400">Standalone</span>
