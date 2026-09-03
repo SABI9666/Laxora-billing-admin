@@ -48,7 +48,11 @@ export default function OverviewPage() {
       return;
     }
     api<ShopStatsResponse>(`/api/admin/stats?businessId=${shopId}`)
-      .then(setShopData)
+      // Only accept the shop-scoped shape. An API that ignores businessId
+      // (an older deployment) answers with platform stats and no `shop`;
+      // treating that as "no shop data" keeps the landing page up instead
+      // of crashing on shop.name.
+      .then((r) => setShopData(r && r.shop && r.stats ? r : null))
       .catch(() => setShopData(null));
   }, [shopId]);
 
@@ -75,7 +79,7 @@ export default function OverviewPage() {
   return (
     <div>
       <PageHeader
-        title={shopData ? `Overview — ${shopData.shop.name}` : "Overview"}
+        title={shopData?.shop?.name ? `Overview — ${shopData.shop.name}` : "Overview"}
       />
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {shopCards.map((c) => (
