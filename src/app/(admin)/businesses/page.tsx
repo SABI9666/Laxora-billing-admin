@@ -12,7 +12,9 @@ type Business = {
   createdAt: string;
   owner: { name: string; email: string };
   franchise?: { id: string; name: string } | null;
-  _count: { invoices: number; parties: number; items: number };
+  // memberships = logins that can open this shop. Zero means nobody can
+  // select it in the shop app, however healthy it looks here.
+  _count: { invoices: number; parties: number; items: number; memberships: number };
 };
 type Franchise = { id: string; name: string };
 
@@ -20,6 +22,37 @@ export default function BusinessesPage() {
   const [businesses, setBusinesses] = useState<Business[]>([]);
   const [franchises, setFranchises] = useState<Franchise[]>([]);
   const [search, setSearch] = useState("");
+  const [reconciling, setReconciling] = useState(false);
+
+  // Spreads receipts that were saved without a bill across each party's open
+  // bills, so the ledger and the pending list agree. The API runs the same
+  // pass on every start; this is for doing it right now.
+  async function reconcilePayments() {
+    if (
+      !confirm(
+        "Allocate every receipt / supplier payment that has no bill to that party's " +
+          "pending bills (oldest first)? Bills the money covers become Paid / Partial. " +
+          "Safe to run again."
+      )
+    )
+      return;
+    setReconciling(true);
+    try {
+      const r = await api<{ allocated: number; rechecked: number }>(
+        "/api/admin/reconcile-payments",
+        { method: "POST" }
+      );
+      alert(
+        r.allocated > 0
+          ? `${r.allocated} voucher(s) allocated to bills; ${r.rechecked} partial bill(s) rechecked.`
+          : `Nothing to allocate — every receipt is already on a bill. ${r.rechecked} partial bill(s) rechecked.`
+      );
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Reconcile failed");
+    } finally {
+      setReconciling(false);
+    }
+  }
 
   async function load() {
     const q = search ? `?search=${encodeURIComponent(search)}` : "";
@@ -56,7 +89,19 @@ export default function BusinessesPage() {
 
   return (
     <div>
-      <PageHeader title="Businesses" />
+      <PageHeader
+        title="Businesses"
+        action={
+          <button
+            onClick={reconcilePayments}
+            disabled={reconciling}
+            className="btn-secondary"
+            title="Allocate receipts saved without a bill to the party's pending bills"
+          >
+            {reconciling ? "Reconciling…" : "Reconcile payments"}
+          </button>
+        }
+      />
       <input
         className="input mb-4 max-w-sm"
         placeholder="Search businesses…"
@@ -71,6 +116,7 @@ export default function BusinessesPage() {
                 <th className="table-th">Shop</th>
                 <th className="table-th">Franchise</th>
                 <th className="table-th">Owner</th>
+                <th className="table-th text-right">Logins</th>
                 <th className="table-th">GSTIN</th>
                 <th className="table-th text-right">Invoices</th>
                 <th className="table-th text-right">Parties</th>
@@ -107,6 +153,18 @@ export default function BusinessesPage() {
                     <div>{b.owner?.name}</div>
                     <div className="text-xs text-gray-400">{b.owner?.email}</div>
                   </td>
+                  <td className="table-td text-right">
+                    {b._count.memberships > 0 ? (
+                      b._count.memberships
+                    ) : (
+                      <span
+                        className="rounded bg-amber-100 px-1.5 py-0.5 text-[11px] font-semibold text-amber-800"
+                        title="No login can open this shop, so it never shows in the shop switcher. Attach one in Shop Logins."
+                      >
+                        ⚠ none
+                      </span>
+                    )}
+                  </td>
                   <td className="table-td">{b.gstin || "—"}</td>
                   <td className="table-td text-right">{b._count.invoices}</td>
                   <td className="table-td text-right">{b._count.parties}</td>
@@ -124,7 +182,7 @@ export default function BusinessesPage() {
               ))}
               {businesses.length === 0 && (
                 <tr>
-                  <td className="table-td text-gray-400" colSpan={9}>
+                  <td className="table-td text-gray-400" colSpan={10}>
                     No businesses found.
                   </td>
                 </tr>
