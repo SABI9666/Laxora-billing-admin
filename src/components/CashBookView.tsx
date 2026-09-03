@@ -11,6 +11,7 @@ export type CashTxn = {
   method: string;
   party: string | null;
   bill: string | null;
+  billDate?: string | null;
   purpose: string | null;
   notes: string | null;
   cashIn: number;
@@ -71,7 +72,7 @@ const time = (iso: string) =>
 function particulars(t: CashTxn): string {
   const bits: string[] = [];
   if (t.party) bits.push(t.party);
-  if (t.bill) bits.push(`Bill ${t.bill}`);
+  if (t.bill) bits.push(`Bill ${t.bill}${t.billDate ? ` dt ${formatDate(t.billDate)}` : ""}`);
   if (t.purpose && t.kind !== "DEPOSIT" && t.kind !== "WITHDRAWAL") bits.push(t.purpose);
   if (t.notes) bits.push(t.notes);
   return bits.join(" · ") || kindLabel[t.kind];
