@@ -6,6 +6,7 @@ import { api } from "@/lib/api";
 import { getAdminShopId, setAdminShopId, onAdminShopChange } from "@/lib/adminShop";
 import { formatMoney, formatDate } from "@/lib/format";
 import PageHeader from "@/components/PageHeader";
+import CashBookView, { type CashDay, type CashTxn } from "@/components/CashBookView";
 
 type Shop = { id: string; name: string; code?: string | null };
 type Tab =
@@ -87,6 +88,7 @@ type ItemMovements = {
 };
 
 type CashBook = {
+  shop?: string;
   openingCash: number;
   openingBank: number;
   cashBalance: number;
@@ -109,21 +111,12 @@ type CashBook = {
     cashBalance: number;
     bankBalance: number;
   }[];
+  // Every movement in the period with running balances (cash & bank books).
+  transactions?: CashTxn[];
   receivables: { id: string; number: string; party: string; date: string; total: number; paid: number; due: number }[];
   payables: { id: string; number: string; party: string; date: string; total: number; paid: number; due: number }[];
 };
 
-type Voucher = {
-  id: string;
-  direction: "IN" | "OUT";
-  purpose?: string | null;
-  amount: string;
-  method: string;
-  paymentDate: string;
-  notes?: string | null;
-  party?: { name: string } | null;
-  invoice?: { invoiceNumber: string } | null;
-};
 
 type SupplierAnalysis = {
   best: { name: string; profit: number; marginPct: number } | null;
@@ -334,6 +327,9 @@ export default function ReportsPage() {
   const [tab, setTab] = useState<Tab>("sales");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
+  // Cash book period: a month picked with ◀ ▶ (fills from/to), or a custom range.
+  const [month, setMonth] = useState("");
+  const [reloadKey, setReloadKey] = useState(0);
   // Sales report period grouping.
   const [groupBy, setGroupBy] = useState<"month" | "quarter" | "year">("month");
 
@@ -345,7 +341,6 @@ export default function ReportsPage() {
   const [analysis, setAnalysis] = useState<SupplierAnalysis | null>(null);
   const [supplierStock, setSupplierStock] = useState<SupplierStock | null>(null);
   const [cashbook, setCashbook] = useState<CashBook | null>(null);
-  const [vouchers, setVouchers] = useState<Voucher[]>([]);
   const [stock, setStock] = useState<StockReport | null>(null);
   const [itemMoves, setItemMoves] = useState<ItemMovements | null>(null);
   const [loading, setLoading] = useState(false);
@@ -391,12 +386,7 @@ export default function ReportsPage() {
       } else if (tab === "stock") {
         setStock(await api(`/api/admin/businesses/${shopId}/stock-movement${range()}`));
       } else if (tab === "cashbook") {
-        const [cb, v] = await Promise.all([
-          api<CashBook>(`/api/admin/businesses/${shopId}/cashbook${range()}`),
-          api<{ payments: Voucher[] }>(`/api/admin/businesses/${shopId}/vouchers${range()}`),
-        ]);
-        setCashbook(cb);
-        setVouchers(v.payments);
+        setCashbook(await api<CashBook>(`/api/admin/businesses/${shopId}/cashbook${range()}`));
       } else {
         const type = tab === "customers" ? "CUSTOMER" : "SUPPLIER";
         const r = await api<{ parties: PartyRow[] }>(
@@ -417,9 +407,47 @@ export default function ReportsPage() {
   }
 
   useEffect(() => {
+    // The cash book always opens on a month; the month effect below fills the
+    // range and triggers the load, so skip the empty-range fetch here.
+    if (tab === "cashbook" && !from && !to) return;
     loadReport();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [shopId, tab, groupBy]);
+  }, [shopId, tab, groupBy, reloadKey]);
+
+  // Month helpers for the cash book: "2026-08" → 1 Aug to 31 Aug.
+  const monthBounds = (m: string) => {
+    const [y, mo] = m.split("-").map(Number);
+    const last = new Date(Date.UTC(y, mo, 0)).getUTCDate();
+    return { from: `${m}-01`, to: `${m}-${String(last).padStart(2, "0")}` };
+  };
+  const applyMonth = (m: string) => {
+    if (!m) return;
+    const b = monthBounds(m);
+    setMonth(m);
+    setFrom(b.from);
+    setTo(b.to);
+    setReloadKey((k) => k + 1);
+  };
+  const shiftMonth = (delta: number) => {
+    const base = month || new Date().toISOString().slice(0, 7);
+    const [y, mo] = base.split("-").map(Number);
+    const d = new Date(Date.UTC(y, mo - 1 + delta, 1));
+    applyMonth(d.toISOString().slice(0, 7));
+  };
+  useEffect(() => {
+    if (tab === "cashbook" && !from && !to) applyMonth(new Date().toISOString().slice(0, 7));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab]);
+  const periodLabel = (() => {
+    if (from && to && month && monthBounds(month).from === from && monthBounds(month).to === to)
+      return new Date(`${month}-01T00:00:00Z`).toLocaleDateString("en-IN", {
+        month: "short",
+        year: "numeric",
+        timeZone: "UTC",
+      });
+    if (from || to) return `${from || "start"} to ${to || "today"}`;
+    return "All time";
+  })();
 
   async function openLedger(partyId: string) {
     setLedger(await api(`/api/admin/parties/${partyId}/ledger`));
@@ -512,6 +540,30 @@ export default function ReportsPage() {
       </div>
 
       {/* Date selection */}
+      {tab === "cashbook" && (
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          <span className="text-sm text-gray-500">Month</span>
+          <button className="btn-secondary px-2.5" onClick={() => shiftMonth(-1)} title="Previous month">
+            ◀
+          </button>
+          <input
+            type="month"
+            className="input w-44"
+            value={month}
+            onChange={(e) => applyMonth(e.target.value)}
+          />
+          <button className="btn-secondary px-2.5" onClick={() => shiftMonth(1)} title="Next month">
+            ▶
+          </button>
+          <button
+            className="text-sm text-brand hover:underline"
+            onClick={() => applyMonth(new Date().toISOString().slice(0, 7))}
+          >
+            This month
+          </button>
+          <span className="ml-2 text-xs text-gray-400">or pick any dates below and press Apply</span>
+        </div>
+      )}
       {showDates && (
         <div className="mb-4 flex flex-wrap items-end gap-3">
           <div>
@@ -522,7 +574,14 @@ export default function ReportsPage() {
             <label className="label">To</label>
             <input type="date" className="input" value={to} onChange={(e) => setTo(e.target.value)} />
           </div>
-          <button className="btn-primary" onClick={loadReport}>
+          <button
+            className="btn-primary"
+            onClick={() => {
+              if (tab === "cashbook" && month && (monthBounds(month).from !== from || monthBounds(month).to !== to))
+                setMonth("");
+              loadReport();
+            }}
+          >
             Apply
           </button>
           {(from || to) && (
@@ -1577,167 +1636,18 @@ export default function ReportsPage() {
             </button>
           </div>
 
-          {/* Professional double-column day book: cash and bank tracked
-              side by side, with opening row, daily splits, and closing totals.
-              A UPI/card receipt raises the BANK column, not the cash drawer —
-              showing the split makes each day's movement self-explanatory. */}
-          <div className="card mb-6 p-0">
-            <div className="border-b px-5 py-3 font-semibold">
-              Daily Cash Book{" "}
-              <span className="text-xs font-normal text-gray-400">
-                Cash = notes in the shop drawer · Bank = UPI, card, cheque &amp; transfers
-              </span>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="table-th">Date</th>
-                    <th className="table-th text-right">Cash In</th>
-                    <th className="table-th text-right">Cash Out</th>
-                    <th className="table-th text-right">Cash Balance</th>
-                    <th className="table-th text-right">Bank In</th>
-                    <th className="table-th text-right">Bank Out</th>
-                    <th className="table-th text-right">Bank Balance</th>
-                    <th className="table-th text-right">Cash ⇄ Bank</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  <tr className="bg-gray-50/60">
-                    <td className="table-td font-semibold text-gray-500">Opening balance</td>
-                    <td className="table-td" colSpan={2} />
-                    <td className="table-td text-right font-semibold">
-                      {formatMoney(cashbook.openingCash)}
-                    </td>
-                    <td className="table-td" colSpan={2} />
-                    <td className="table-td text-right font-semibold">
-                      {formatMoney(cashbook.openingBank)}
-                    </td>
-                    <td className="table-td" />
-                  </tr>
-                  {cashbook.days.map((d) => (
-                    <tr key={d.day}>
-                      <td className="table-td font-medium">{d.day}</td>
-                      <td className="table-td text-right text-green-700">
-                        {d.inCash ? `+${formatMoney(d.inCash)}` : "—"}
-                      </td>
-                      <td className="table-td text-right text-red-600">
-                        {d.outCash ? `−${formatMoney(d.outCash)}` : "—"}
-                      </td>
-                      <td className="table-td text-right font-medium">
-                        {formatMoney(d.cashBalance)}
-                      </td>
-                      <td className="table-td text-right text-green-700">
-                        {d.inBank ? `+${formatMoney(d.inBank)}` : "—"}
-                      </td>
-                      <td className="table-td text-right text-red-600">
-                        {d.outBank ? `−${formatMoney(d.outBank)}` : "—"}
-                      </td>
-                      <td className="table-td text-right font-medium">
-                        {formatMoney(d.bankBalance)}
-                      </td>
-                      {/* Transfers are not income or spending — they only move
-                          money between the cash drawer and the bank. */}
-                      <td className="table-td text-right text-xs text-blue-600">
-                        {d.toBank > 0 && <div>→ Bank {formatMoney(d.toBank)}</div>}
-                        {d.toCash > 0 && <div>→ Cash {formatMoney(d.toCash)}</div>}
-                        {!d.toBank && !d.toCash && <span className="text-gray-400">—</span>}
-                      </td>
-                    </tr>
-                  ))}
-                  {cashbook.days.length > 0 && (
-                    <tr className="bg-gray-50 font-semibold">
-                      <td className="table-td">Total / Closing</td>
-                      <td className="table-td text-right text-green-700">
-                        +{formatMoney(cashbook.days.reduce((s, d) => s + d.inCash, 0))}
-                      </td>
-                      <td className="table-td text-right text-red-600">
-                        −{formatMoney(cashbook.days.reduce((s, d) => s + d.outCash, 0))}
-                      </td>
-                      <td className="table-td text-right">{formatMoney(cashbook.cashBalance)}</td>
-                      <td className="table-td text-right text-green-700">
-                        +{formatMoney(cashbook.days.reduce((s, d) => s + d.inBank, 0))}
-                      </td>
-                      <td className="table-td text-right text-red-600">
-                        −{formatMoney(cashbook.days.reduce((s, d) => s + d.outBank, 0))}
-                      </td>
-                      <td className="table-td text-right">{formatMoney(cashbook.bankBalance)}</td>
-                      <td className="table-td text-right text-xs text-blue-600">
-                        {cashbook.depositedToBank > 0 && (
-                          <div>→ Bank {formatMoney(cashbook.depositedToBank)}</div>
-                        )}
-                        {cashbook.withdrawnToCash > 0 && (
-                          <div>→ Cash {formatMoney(cashbook.withdrawnToCash)}</div>
-                        )}
-                        {!cashbook.depositedToBank && !cashbook.withdrawnToCash && "—"}
-                      </td>
-                    </tr>
-                  )}
-                  {cashbook.days.length === 0 && (
-                    <tr>
-                      <td className="table-td text-gray-400" colSpan={8}>
-                        No vouchers in this period.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          {/* Credit report / payment report */}
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-            {(["IN", "OUT"] as const).map((dir) => (
-              <div key={dir} className="card p-0">
-                <div className="border-b px-5 py-3 font-semibold">
-                  {dir === "IN" ? "Credit Report (money received)" : "Payment Report (money given)"}
-                </div>
-                <div className="max-h-96 overflow-y-auto">
-                  <table className="w-full">
-                    <thead className="sticky top-0 bg-gray-50">
-                      <tr>
-                        <th className="table-th">Date</th>
-                        <th className="table-th">Party</th>
-                        <th className="table-th">Bill</th>
-                        <th className="table-th">Mode</th>
-                        <th className="table-th text-right">Amount</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100">
-                      {vouchers
-                        .filter((v) => (v.direction ?? "IN") === dir)
-                        .map((v) => (
-                          <tr key={v.id}>
-                            <td className="table-td">{formatDate(v.paymentDate)}</td>
-                            <td className="table-td font-medium">
-                              {v.party?.name ?? v.purpose ?? "—"}
-                            </td>
-                            <td className="table-td text-gray-500">
-                              {v.invoice?.invoiceNumber ?? v.purpose ?? "—"}
-                            </td>
-                            <td className="table-td">{v.method}</td>
-                            <td
-                              className={`table-td text-right font-semibold ${
-                                dir === "IN" ? "text-green-700" : "text-red-600"
-                              }`}
-                            >
-                              {formatMoney(v.amount)}
-                            </td>
-                          </tr>
-                        ))}
-                      {vouchers.filter((v) => (v.direction ?? "IN") === dir).length === 0 && (
-                        <tr>
-                          <td className="table-td text-gray-400" colSpan={5}>
-                            None in this period.
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            ))}
-          </div>
+          <CashBookView
+            shop={cashbook.shop ?? shops.find((x) => x.id === shopId)?.name ?? "Shop"}
+            periodLabel={periodLabel}
+            openingCash={cashbook.openingCash}
+            openingBank={cashbook.openingBank}
+            cashBalance={cashbook.cashBalance}
+            bankBalance={cashbook.bankBalance}
+            depositedToBank={cashbook.depositedToBank}
+            withdrawnToCash={cashbook.withdrawnToCash}
+            days={cashbook.days as CashDay[]}
+            transactions={cashbook.transactions ?? []}
+          />
         </>
       )}
 
