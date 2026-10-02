@@ -7,7 +7,9 @@ import { formatMoney, formatDate } from "@/lib/format";
 import LedgerItems, {
   LedgerBills,
   LedgerKind,
+  LedgerProfitSummary,
   type LedgerBill,
+  type LedgerProfit,
   type LedgerItem,
 } from "@/components/LedgerItems";
 
@@ -39,6 +41,8 @@ type Ledger = {
   } | null;
   closingBalance: number;
   bills?: LedgerBill[];
+  // Profit per sale bill after commission and charges (customers only).
+  profit?: LedgerProfit | null;
   // Reconciliation footer — the same figures the party list is built from.
   totals?: {
     billed: number;
@@ -145,6 +149,11 @@ export default function AdminLedgerPage() {
 
         <LedgerBills bills={data.bills} isCustomer={isCustomer} />
 
+        {/* Internal figure — kept off the printed statement. */}
+        <div className="no-print">
+          <LedgerProfitSummary profit={data.profit} />
+        </div>
+
         {data.totals && (
           <div className="mt-2 flex flex-wrap justify-end gap-x-5 gap-y-1 text-xs text-gray-600">
             <span>
@@ -170,7 +179,7 @@ export default function AdminLedgerPage() {
             )}
             {data.totals.chargesGiven > 0 && (
               <span>
-                Commission given <b>{formatMoney(data.totals.chargesGiven)}</b>
+                Commission paid <b>{formatMoney(data.totals.chargesGiven)}</b>
               </span>
             )}
           </div>
